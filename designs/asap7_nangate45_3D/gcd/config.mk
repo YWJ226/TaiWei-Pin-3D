@@ -11,8 +11,6 @@ export PLACE_DENSITY_LB_ADDON = 0.10
 export DETAILED_ROUTE_END_ITERATION = 5
 export GLOBAL_ROUTE_ARGS = -verbose -congestion_iterations 30
 
-export CORE_UTILIZATION ?= 60
-
 export NUM_CORES   ?= 32
 
 export SC_LEF_UPPER_COVER ?= \

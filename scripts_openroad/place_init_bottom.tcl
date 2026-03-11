@@ -10,6 +10,7 @@ load_design $DEF_IN 2_floorplan.sdc "Starting place init upper"
 
 source $::env(OPENROAD_SCRIPTS_DIR)/placement_utils.tcl
 set place_density [calculate_placement_density]
+apply_tier_policy bottom -cts_safe 1
 
 mark_insts_by_master "*upper*" FIRM
 

@@ -66,15 +66,14 @@ if {[info exist ::env(RCX_RULES)]} {
 source $::env(OPENROAD_SCRIPTS_DIR)/report_metrics.tcl
 report_metrics 6 "finish" false false
 puts "Final report metrics written to $::env(REPORTS_DIR)/finish_finish.rpt"
+
+source $::env(OPENROAD_SCRIPTS_DIR)/save_images.tcl
 # Save a final image if openroad is compiled with the gui
 set VISUALIZE_FINAL [_get VISUALIZE_FINAL "0"]
 if {$VISUALIZE_FINAL eq "1"} {
   puts "gui::pause"
   gui::show
   gui::pause
-  return -code 0
 }
-source $::env(OPENROAD_SCRIPTS_DIR)/save_images.tcl
-
 
 exit

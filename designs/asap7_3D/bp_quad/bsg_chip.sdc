@@ -4,7 +4,7 @@
 
 ###################################################################
 set sdc_version 2.0
-set clk_period 3
+set clk_period 850
 set clk_uncertainty 150
 set bp_clk_hp [expr ${clk_period}/2]
 set l_clk_p1 [expr ${clk_period}*2]

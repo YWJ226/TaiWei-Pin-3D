@@ -335,7 +335,13 @@ proc or_rebuild_rows_for_site {new_site} {
   if {[$site getWidth] <= 0 || [$site getHeight] <= 0} {
     error "ERROR: invalid site '$new_site' (w=[$site getWidth] h=[$site getHeight])"
   }
-
+  if { [find_macros] != "" } {
+    lassign $::env(MACRO_PLACE_HALO) halo_x halo_y
+    set halo_max [expr max($halo_x, $halo_y)]
+    set blockage_width $halo_max
+    source $::env(OPENROAD_SCRIPTS_DIR)/placement_blockages.tcl
+    block_channels $blockage_width
+  }
   # make_rows will rebuild rows (and clear existing ones internally)
   make_rows -core_area [list $core_lx $core_ly $core_ux $core_uy] -site $new_site
 }

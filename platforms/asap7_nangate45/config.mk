@@ -56,17 +56,17 @@ export FILL_CELLS               = FILLCELL_X1 FILLCELL_X2 FILLCELL_X4 FILLCELL_X
 export PLACE_SITE               = FreePDK45_38x28_10R_NP_162NW_34O
 export IO_PLACER_H              = M5
 export IO_PLACER_V              = M6
-export PAR_BAL_LO ?= 1.0
-export PAR_BAL_HI ?= 6.0
-export PAR_SCALE_FACTOR ?= 0.06 0.94
+export PAR_BAL_LO ?= 0.0
+export PAR_BAL_HI ?= 3.0
+export PAR_SCALE_FACTOR ?= 0.08 0.92
 export PAR_BAL_ITERATION ?= 11
 # PDN
 export PDN_TCL                 ?= $(PLATFORM_DIR)/grid_strategy-M1-M4-M7.tcl
 export TAPCELL_TCL              = $(PLATFORM_DIR)/tapcell.tcl
 
 # 宏块留白
-export MACRO_PLACE_HALO        ?= 22.4 15.12
-export MACRO_PLACE_CHANNEL     ?= 18.8 19.95
+export MACRO_PLACE_HALO        ?= 0.5 0.5
+export MACRO_PLACE_CHANNEL     ?= 0.5 0.5
 
 # =====================================================
 # Place

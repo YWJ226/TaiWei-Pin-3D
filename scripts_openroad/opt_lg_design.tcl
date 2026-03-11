@@ -37,12 +37,16 @@ set_placement_padding -global \
     -right $::env(CELL_PAD_IN_SITES_DETAIL_PLACEMENT)
 
 puts "detailed_placement"
-detailed_placement
+[catch { detailed_placement } ]
 
 puts "improve_placement"
 [catch { improve_placement } ]
 
 puts "optimize_mirroring"
-optimize_mirroring
+[catch {optimize_mirroring} ]
+
+[catch { detailed_placement } ]
 
 estimate_parasitics -placement
+
+

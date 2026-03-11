@@ -16,7 +16,7 @@ export ADDITIONAL_LEFS_BOTTOM_COVER = $(sort $(wildcard $(PLATFORM_DIR)/lef_bott
 export ADDITIONAL_LIBS = $(sort $(wildcard $(PLATFORM_DIR)/lib_bottom/fakeram/*.lib)) \
                          $(sort $(wildcard $(PLATFORM_DIR)/lib_upper/fakeram/*.lib))
 
-export CORE_UTILIZATION = 50
+export CORE_UTILIZATION = 40
 export CORE_ASPECT_RATIO = 1
 export CORE_MARGIN = 5
 export PLACE_DENSITY_LB_ADDON = 0.08
@@ -24,6 +24,6 @@ export TNS_END_PERCENT        = 100
 export DETAILED_ROUTE_END_ITERATION = 20
 export GLOBAL_ROUTE_ARGS = -verbose -congestion_iterations 30
 
-export MACRO_PLACE_HALO = 10 10
+export MACRO_PLACE_HALO = 5 5
 
 export NUM_CORES   ?= 32

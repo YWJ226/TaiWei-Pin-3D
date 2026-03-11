@@ -7,8 +7,10 @@ load_design 4_cts.def 4_cts.sdc "Start global route"
 # This proc is here to allow us to use 'return' to return early from this
 # file which is sourced
 proc global_route_helper { } {
+  source $::env(OPENROAD_SCRIPTS_DIR)/deleteRoutingObstructions.tcl
+  deleteRoutingObstructions
   source_env_var_if_exists PRE_GLOBAL_ROUTE_TCL
-
+  
   proc do_global_route { } {
     set all_args [concat [list \
       -congestion_report_file $::global_route_congestion_report] \

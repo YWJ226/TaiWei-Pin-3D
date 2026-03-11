@@ -90,5 +90,3 @@ foreach clock [get_clocks *] {
 }
 
 gui::restore_display_controls
-
-exit
