@@ -318,7 +318,7 @@ ord-pre:
 .PHONY: ord-place-init
 ord-place-init:
 	@$(call _mkstdirs)
-	$(call _run_with_tmp_log,$(LOG_DIR)/3_place_init.log,SC_FILE="$(SC_LEF_UPPER_COVER)" SC_LEF="$(SC_LEF_UPPER_COVER)" LEF_FILES="$(LEF_FILES_UPPER_COVER)" ADDITIONAL_LEFS="$(ADDITIONAL_LEFS_UPPER_COVER)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/place_init.tcl)
+	$(call _run_with_tmp_log,$(LOG_DIR)/3_place_init.log,SC_FILE="$(SC_LEF_BOTTOM_COVER)" SC_LEF="$(SC_LEF_BOTTOM_COVER)" LEF_FILES="$(LEF_FILES_BOTTOM_COVER)" ADDITIONAL_LEFS="$(ADDITIONAL_LEFS_BOTTOM_COVER)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/place_init.tcl)
 
 .PHONY: ord-place-init-upper
 ord-place-init-upper:
