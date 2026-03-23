@@ -21,8 +21,8 @@ export TECH_LEF="platforms/asap7_3D/lef/ord_pitch_variant/asap7_tech_1x_2A6M7M.$
 make DESIGN_CONFIG=designs/asap7_3D/${DESIGN_NICKNAME}/config.mk ord-pre
 make DESIGN_CONFIG=designs/asap7_3D/${DESIGN_NICKNAME}/config.mk ord-3d-pdn
 make DESIGN_CONFIG=designs/asap7_3D/${DESIGN_NICKNAME}/config.mk ord-place-init
-make DESIGN_CONFIG=designs/asap7_3D/${DESIGN_NICKNAME}/config.mk ord-place-init-upper
 make DESIGN_CONFIG=designs/asap7_3D/${DESIGN_NICKNAME}/config.mk ord-place-init-bottom
+make DESIGN_CONFIG=designs/asap7_3D/${DESIGN_NICKNAME}/config.mk ord-place-init-upper
 iteration=1
 for ((i=1;i<=iteration;i++))
 do

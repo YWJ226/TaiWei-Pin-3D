@@ -9,8 +9,8 @@ set VERILOG_OUT $env(DESIGN_NAME)_3D.gp.v
 load_design $DEF_IN 2_floorplan.sdc "Starting place init"
 
 source $::env(OPENROAD_SCRIPTS_DIR)/placement_utils.tcl
-set place_density [calculate_placement_density]
 apply_tier_policy upper -cts_safe 1
+set place_density [calculate_placement_density]
 
 puts "Running global placement with density: $place_density"
 set global_placement_args ""
