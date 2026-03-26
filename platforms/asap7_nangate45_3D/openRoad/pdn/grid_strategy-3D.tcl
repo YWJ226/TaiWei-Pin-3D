@@ -155,7 +155,7 @@ puts "INFO: Dynamic PDN Pitch -> M4: $m4_pitch, M7: $m7_pitch"
 # PASS-1: BOTTOM die (Nangate45-style PDN)
 # ==========================================================
 
-or_rebuild_rows_for_site $::env(BOTTOM_SITE)
+or_rebuild_rows_for_site $::env(BOTTOM_SITE) bottom
 
 # IMPORTANT: followpins pitch should match the rebuilt row height
 set bot_rail_pitch [get_row_height_um 1.4]
@@ -224,7 +224,7 @@ pdngen_reset_config
 # PASS-2: TOP die (ASAP7-style PDN)
 # ==========================================================
 
-or_rebuild_rows_for_site $::env(UPPER_SITE)
+or_rebuild_rows_for_site $::env(UPPER_SITE) upper
 
 # IMPORTANT: followpins pitch should match the rebuilt row height
 set top_rail_pitch [get_row_height_um 0.27]

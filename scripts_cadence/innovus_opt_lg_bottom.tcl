@@ -20,8 +20,6 @@ set sdc $SDC_IN
 
 source $::env(CADENCE_SCRIPTS_DIR)/mmmc_setup.tcl
 
-setMultiCpuUsage -localCpu [_get NUM_CORES 16]
-
 # --- init design ---
 set init_lef_file $lefs
 set init_mmmc_file ""
@@ -29,7 +27,10 @@ set init_design_settop 1
 set init_top_cell $DESIGN
 set init_verilog $V_IN
 set init_design_netlisttype "Verilog"
+
 init_design -setup {WC_VIEW} -hold {BC_VIEW}
+_common_setup
+
 defIn $DEF_IN
 
 # --- incremental legalization on remaining (bottom) ---

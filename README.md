@@ -193,7 +193,7 @@ format for both open-source and commercial reference flows.
 | **Place Init**          | `ord-place-init`           | `cds-place-init`           | Initialize cross‑tier placement. *(Uses `config.mk`)*        |
 | **Place — Upper Tier**  | `ord-place-upper`          | `cds-place-upper`          | Alternate with bottom for `iteration` loops. *(Uses `config_bottom_cover.mk`)* |
 | **Place — Bottom Tier** | `ord-place-bottom`         | `cds-place-bottom`         | Alternating cross‑tier refinement. *(Uses `config_upper_cover.mk`)* |
-| **Place Finish**        | `ord-pre_cts`              | `cds-place-finish`         | Refinement. *(Uses `config.mk`)*                             |
+| **Place Finish**        | `ord-pre_cts`              | `cds-gp2lg`         | Refinement. *(Uses `config.mk`)*                             |
 | **Legalize — Upper**    | `ord-legalize-upper`       | `cds-legalize-upper`       | Legalize upper tier. *(Uses `config_bottom_cover.mk`)*       |
 | **Legalize — Bottom**   | `ord-legalize-bottom`      | `cds-legalize-bottom`      | Legalize bottom tier and merge. *(Uses `config_upper_cover.mk`)* |
 | **CTS**                 | `ord-cts`                  | `cds-cts`                  | Clock trees per die with cross‑die alignment. *(Uses `config.mk`)* |

@@ -1,4 +1,4 @@
-proc block_channels { channel_width_in_microns } {
+proc block_channels { channel_width_in_microns tier } {
   set tech [ord::get_db_tech]
   set units [$tech getDbUnitsPerMicron]
   set block [ord::get_db_block]
@@ -8,9 +8,14 @@ proc block_channels { channel_width_in_microns } {
   #
   set shapes {}
   foreach inst [$block getInsts] {
-    if { [[$inst getMaster] getType] == "BLOCK" && [$inst getPlacementStatus] == "FIRM"} {
-      set box [$inst getBBox]
-      lappend shapes [odb::newSetFromRect [$box xMin] [$box yMin] [$box xMax] [$box yMax]]
+    if { [[$inst getMaster] getType] == "BLOCK" && [$inst getPlacementStatus] == "FIRM" } {
+      set mname [[$inst getMaster] getName]
+      set instname [$inst getName]
+      puts "Add halo around $instname"
+      if {[string match -nocase $tier $mname]} {
+        set box [$inst getBBox]
+        lappend shapes [odb::newSetFromRect [$box xMin] [$box yMin] [$box xMax] [$box yMax]]
+      }
     }
   }
 

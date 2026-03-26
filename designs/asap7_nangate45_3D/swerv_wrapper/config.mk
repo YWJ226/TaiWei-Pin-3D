@@ -19,11 +19,11 @@ export ADDITIONAL_LIBS = $(sort $(wildcard $(PLATFORM_DIR)/lib_bottom/fakeram/*.
 
 export CORE_MARGIN = 2
 export ASPECT_RATIO = 1.0
-export CORE_UTILIZATION = 50
-export MACRO_PLACE_HALO    = 1 1
+export CORE_UTILIZATION = 60
+export MACRO_PLACE_HALO    = 2 2
 
 export PLACE_DENSITY_LB_ADDON = 0.08
 export TNS_END_PERCENT        = 100
-export DETAILED_ROUTE_END_ITERATION = 20
+export DETAILED_ROUTE_END_ITERATION = 15
 
 export GLOBAL_ROUTE_ARGS = -verbose -congestion_iterations 30

@@ -30,15 +30,8 @@ set init_top_cell          $DESIGN
 set init_verilog           $VERILOG_IO
 set init_design_netlisttype "Verilog"
 
-set init_pwr_net  {BOT_VDD TOP_VDD}
-set init_gnd_net  {BOT_VSS TOP_VSS}
-
 init_design -setup {WC_VIEW} -hold {BC_VIEW}
-set_power_analysis_mode -leakage_power_view WC_VIEW -dynamic_power_view WC_VIEW
-set_interactive_constraint_modes {CON}
-setAnalysisMode -reset
-setAnalysisMode -analysisType onChipVariation -cppr both
-setOptMode -powerEffort low -leakageToDynamicRatio 0.5
+_common_setup
 
 defIn $DEF_IO
 

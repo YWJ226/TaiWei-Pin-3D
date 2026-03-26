@@ -20,6 +20,7 @@ timingReports
 .timing_file_*.tif.gz
 scheduling_file.cts.*
 test.scripts
+test.*_run
 run_logs
 test*.sh
 test.tcl
@@ -32,7 +33,8 @@ eval_*.sh
 partition_log
 genus_reports
 core.*
-
+innovus
+platforms/nangate45_asap7_3D
 # ignore scripts
 platforms/process_scripts
 

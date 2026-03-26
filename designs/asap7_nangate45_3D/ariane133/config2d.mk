@@ -4,15 +4,14 @@ export PLATFORM    = asap7_nangate45
 
 export SYNTH_HIERARCHICAL = 1
 
-export VERILOG_FILES = $(DESIGN_HOME)/src/$(DESIGN_NICKNAME)/ariane.sv2v.v \
-                       $(DESIGN_HOME)/asap7_nangate45_3D/$(DESIGN_NICKNAME)/macros.v
+export VERILOG_FILES = $(DESIGN_HOME)/asap7_nangate45_3D/ariane133/ariane.v 
 
 export SDC_FILE      = $(DESIGN_HOME)/asap7_nangate45_3D/ariane133/ariane.sdc
 
 export ADDITIONAL_LEFS = $(sort $(wildcard $(PLATFORM_DIR)/lef/fakeram/*.lef))
 export ADDITIONAL_LIBS = $(sort $(wildcard $(PLATFORM_DIR)/lib/fakeram/*.lib))
 
-export CORE_UTILIZATION = 50
+export CORE_UTILIZATION ?= 70
 export CORE_ASPECT_RATIO = 1
 export CORE_MARGIN = 5
 export GEN_EFF medium

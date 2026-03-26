@@ -18,14 +18,8 @@ set netlist     [file join $RESULTS_DIR "1_synth.v"]
 set sdc        [file join $RESULTS_DIR "1_synth.sdc"]
 source $::env(CADENCE_SCRIPTS_DIR)/mmmc_setup.tcl
 
-setMultiCpuUsage -localCpu [_get NUM_CORES 16]
 set util [_get CORE_UTILIZATION 70]
 
-
-
-# default settings
-set init_pwr_net VDD
-set init_gnd_net VSS
 set init_verilog "$netlist"
 set init_design_netlisttype "Verilog"
 set init_design_settop 1
@@ -41,19 +35,12 @@ set_interactive_constraint_modes {CON}
 setAnalysisMode -reset
 setAnalysisMode -analysisType onChipVariation -cppr both
 
-clearGlobalNets
-globalNetConnect VDD -type pgpin -pin VDD -inst * -override
-globalNetConnect VSS -type pgpin -pin VSS -inst * -override
-globalNetConnect VDD -type tiehi -inst * -override
-globalNetConnect VSS -type tielo -inst * -override
-
-
 setOptMode -powerEffort low -leakageToDynamicRatio 0.5
 setGenerateViaMode -auto true
 generateVias
 
 # basic path groups
-# createBasicPathGroups -expanded
+createBasicPathGroups -expanded
 
 # Floorplan parameters
 set CORE_UTIL     [_get CORE_UTILIZATION 60] 

@@ -44,30 +44,15 @@ set init_design_netlisttype "Verilog"
 # } else {
 #   puts "Missing routed ENC file: $ENC_FILE"
 puts "INFO: restoreDesign $DESIGN from def, verilog"
+
 init_design -setup {WC_VIEW} -hold {BC_VIEW}
-
-setAnalysisMode -reset
-set_power_analysis_mode -leakage_power_view WC_VIEW -dynamic_power_view WC_VIEW
-set_interactive_constraint_modes {CON}
-setAnalysisMode -analysisType onChipVariation -cppr both
-set_analysis_view -setup {WC_VIEW} -hold {BC_VIEW} -leakage WC_VIEW -dynamic WC_VIEW
-
-setOptMode -powerEffort low -leakageToDynamicRatio 0.5
-setGenerateViaMode -auto true
-generateVias
-
-# basic path groups
-createBasicPathGroups -expanded
+_common_setup
 
 defIn $DEF_IN
 # }
 puts "READ DEF: $DEF_IN"
 set_default_switching_activity -seq_activity 0.2
 
-# Analysis knobs
-
-setMultiCpuUsage -localCpu [_get NUM_CORES 16]
-fit
 dumpToGIF $LOG_DIR/6_final.png
 # Newer Voltus API hint (do not error if views absent)
 

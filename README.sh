@@ -39,7 +39,7 @@ for ((i=1;i<=iteration;i++)); do
   make DESIGN_CONFIG=designs/asap7_3D/${DESIGN_NICKNAME}/config.mk  ord-place-bottom
 done
 # input: $(DESIGN_NAME)_3D.v $(DESIGN_NAME)_3D.def
-make DESIGN_CONFIG=designs/asap7_3D/${DESIGN_NICKNAME}/config.mk ord-pre-opt
+make DESIGN_CONFIG=designs/asap7_3D/${DESIGN_NICKNAME}/config.mk ord-gp2lg
 # input: $(DESIGN_NAME)_3D.lg.def, $(DESIGN_NAME)_3D.lg.v
 make DESIGN_CONFIG=designs/asap7_3D/${DESIGN_NICKNAME}/config.mk ord-legalize-bottom
 # input: $(DESIGN_NAME)_3D.lg.def, $(DESIGN_NAME)_3D.lg.v

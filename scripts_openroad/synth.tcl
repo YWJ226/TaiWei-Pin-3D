@@ -1,3 +1,36 @@
+#
+# Extracts and returns module names from Verilog file
+#
+proc get_module_names { file_path } {
+  set module_list [list]
+  if { [catch { set fid [open $file_path r] } err] } {
+    error "Failed to open file $file_path: $err"
+  }
+
+  set regex {^[ \t]*module[ \t]+([A-Za-z_$][A-Za-z0-9_$]*)}
+
+  while { [gets $fid line] >= 0 } {
+    if { [regexp -nocase $regex $line match_all module_name] } {
+      lappend module_list $module_name
+    }
+  }
+
+  close $fid
+  return $module_list
+}
+
+#
+# Builds dfflegalize arg list
+#
+proc get_dfflegalize_args { file_path } {
+  set legalize_args [list]
+  set module_names [get_module_names $file_path]
+  foreach module_name $module_names {
+    lappend legalize_args -cell $module_name x
+  }
+  return $legalize_args
+}
+
 puts "--- Starting synth.tcl ---"
 source $::env(OPENROAD_SCRIPTS_DIR)/synth_preamble.tcl
 puts "--- Reading design sources... ---"
@@ -12,9 +45,6 @@ dict for {key value} [env_var_or_empty VERILOG_TOP_PARAMS] {
 
 puts "--- Checking hierarchy for top module: $::env(DESIGN_NAME) ---"
 hierarchy -check -top $::env(DESIGN_NAME)
-
-puts "--- Sourcing SYNTH_CANONICALIZE_TCL if it exists... ---"
-source_env_var_if_exists SYNTH_CANONICALIZE_TCL
 
 # Get rid of unused modules
 puts "--- Running opt_clean -purge ---"
@@ -85,12 +115,17 @@ json -o $::env(RESULTS_DIR)/mem.json
 exec -- $::env(PYTHON_EXE) $::env(OPENROAD_SCRIPTS_DIR)/mem_dump.py \
   --max-bits 4096 $::env(RESULTS_DIR)/mem.json
 
-opt -fast -full
-memory_map
-opt -full
-techmap
-abc -dff -script $::env(OPENROAD_SCRIPTS_DIR)/abc_retime.script
-select -clear
+if { [env_var_exists_and_non_empty SYNTH_RETIME_MODULES] } {
+  select $::env(SYNTH_RETIME_MODULES)
+  opt -fast -full
+  memory_map
+  opt -full
+  techmap
+  abc -dff -script $::env(OPENROAD_SCRIPTS_DIR)/abc_retime.script
+  select -clear
+}
+
+synth -top $::env(DESIGN_NAME) -run fine: {*}$synth_full_args
 
 # Get rid of indigestibles
 puts "--- Removing formal constructs and prints. ---"

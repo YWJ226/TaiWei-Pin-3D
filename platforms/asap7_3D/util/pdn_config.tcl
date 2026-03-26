@@ -169,11 +169,16 @@ setAddStripeMode -route_over_rows_only false
 
 # Own global nets in this script
 clearGlobalNets
+win
+suspend
+rebuild_rows_for_site $::env(PLACE_SITE) bottom
 
 # Part 1: Bottom tier (M1/M2 rails + M3 vertical + M6 horizontal)
 build_symmetric_pdn_for_tier "BOT" $bot_insts \
                              BOT_VDD BOT_VSS \
                              M1 M2 M3 M6
+
+rebuild_rows_for_site $::env(PLACE_SITE) upper
 
 # Part 2: Top tier (M1_m/M2_m rails + M3_m vertical + M6_m horizontal)
 build_symmetric_pdn_for_tier "TOP" $top_insts \

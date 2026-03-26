@@ -15,6 +15,7 @@
 #   source $::env(CADENCE_SCRIPTS_DIR)/tier_cell_policy.tcl
 #   apply_tier_policy upper   (or bottom)
 # ==========================================
+source $::env(CADENCE_SCRIPTS_DIR)/place_macro_util.tcl
 
 proc _as_list {envname} {
   if {[info exists ::env($envname)] && $::env($envname) ne ""} {
@@ -82,7 +83,7 @@ proc box_flat4 {box} {
   return $box
 }
 
-proc rebuild_rows_for_site {site_name {core_margin 0}} {
+proc rebuild_rows_for_site {site_name tier {core_margin 0}} {
   # 1. Basic validation
   if {$site_name eq ""} {
     puts "ERROR(INV): rebuild_rows_for_site: empty site_name."
@@ -119,44 +120,37 @@ proc rebuild_rows_for_site {site_name {core_margin 0}} {
   # 4. Delete and Re-create
   deleteRow -all
   createRow -site $site_name -area [list $new_x1 $new_y1 $new_x2 $new_y2]
+  deleteHaloFromBlock -allBlock
+  lassign [pmu::_get_halos] halo_x halo_y
+  foreach cell [pmu::get_tier_macro_cells $tier] {
+    addHaloToBlock -cell $cell $halo_x $halo_y $halo_x $halo_y 
+  }
 }
 
-# Sets the placement status of tier-specific cells.
-# Usage:
-#   set_tier_placement_status bottom fixed   (fixes bottom-tier cells)
-#   set_tier_placement_status bottom placed  (unfixes bottom-tier cells, sets to 'placed')
-#   set_tier_placement_status upper fixed    (fixes upper-tier cells)
-#   set_tier_placement_status upper placed   (unfixes upper-tier cells, sets to 'placed')
+# Set placement status for tier-specific COVER cells only.
+# Rule:
+#   - master name matches "*_upper" or "*_bottom"
+#   - master has a valid site
+#   - master subclass contains COVER
 proc set_tier_placement_status {tier status} {
-  # Validate tier
-  set tier_arg [string tolower $tier]
-  if {![string match "upper" $tier_arg] && ![string match "bottom" $tier_arg]} {
-    error "Invalid tier '$tier'. Must be 'upper' or 'bottom'."
-    return
+  set tier [string tolower $tier]
+  set status [string tolower $status]
+  if {$status eq "unfix"} {
+    set status "placed"
   }
 
-  # Validate and normalize status
-  set status_arg [string tolower $status]
-  if {$status_arg eq "unfix"} {
-    set status_arg "placed"
+  set pattern "*_${tier}"
+  set target_insts {}
+  
+  foreach inst [dbGet -p2 top.insts.cell.name $pattern] {
+    if {[dbGet $inst.cell.site.name] ne "" && [regexp {cover} [dbGet $inst.cell.subClass]]} {
+      lappend target_insts $inst
+    }
   }
-  if {$status_arg ne "fixed" && $status_arg ne "placed"} {
-    error "Invalid status '$status'. Must be 'fixed', 'placed', or 'unfix'."
-    return
+  if {[llength $target_insts]} {
+    dbSet $target_insts.pStatus $status
   }
-
-  set match_pattern "*_${tier_arg}"
-
-  # Use catch to avoid errors if dbGet is not available or no instances are found
-  set insts {}
-  catch { set insts [dbGet -p2 top.insts.cell.name $match_pattern] }
-
-  if {[llength $insts]} {
-    dbSet $insts.pStatus $status_arg
-    puts "INFO: Set [llength $insts] ${tier_arg}-tier instances to '$status_arg'."
-  } else {
-    puts "INFO: No instances found matching '$match_pattern'."
-  }
+  puts "INFO: Set [llength $target_insts] ${tier}-tier COVER instances to '$status'."
 }
 
 # ------------------------------------------------------------
@@ -272,5 +266,5 @@ proc apply_tier_policy {tier args} {
     # puts "INFO: Tier policy applied for BOTTOM: dont_use(upper libs), dont_touch(upper insts), filler=BOTTOM."
   }
   puts "Rebuild Row for $tier"
-  rebuild_rows_for_site $::env(PLACE_SITE)
+  rebuild_rows_for_site $::env(PLACE_SITE) $tier
 }

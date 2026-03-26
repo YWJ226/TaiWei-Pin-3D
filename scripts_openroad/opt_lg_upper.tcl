@@ -12,13 +12,13 @@ load_design $DEF_IN 2_floorplan.sdc "Starting upper optimization and legalizatio
 # Source helper utilities
 source $::env(OPENROAD_SCRIPTS_DIR)/placement_utils.tcl
 
-mark_insts_by_master "*bottom*" FIRM
+# mark_insts_by_master "*bottom*" FIRM
 
 apply_tier_policy upper -cts_safe 1 -fixlib 1
 
 source $::env(OPENROAD_SCRIPTS_DIR)/opt_lg_design.tcl
 
-mark_insts_by_master "*bottom*" PLACED
+# mark_insts_by_master "*bottom*" PLACED
 
 write_def    $env(RESULTS_DIR)/$DEF_OUT
 write_verilog $env(RESULTS_DIR)/$VERILOG_OUT

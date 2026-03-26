@@ -19,25 +19,30 @@ export LOG_DIR=./logs/nangate45_3D/${DESIGN_NICKNAME}/${FLOW_VARIANT}
 export OBJECTS_DIR=./objects/nangate45_3D/${DESIGN_NICKNAME}/${FLOW_VARIANT}
 export REPORTS_DIR=./reports/nangate45_3D/${DESIGN_NICKNAME}/${FLOW_VARIANT}
 export RESULTS_DIR=./results/nangate45_3D/${DESIGN_NICKNAME}/${FLOW_VARIANT}
-make DESIGN_CONFIG=designs/nangate45_3D/${DESIGN_NICKNAME}/config2d.mk clean_all
-make DESIGN_CONFIG=designs/nangate45_3D/${DESIGN_NICKNAME}/config.mk clean_all
-make DESIGN_CONFIG=designs/nangate45_3D/${DESIGN_NICKNAME}/config2d.mk cds-synth
-make DESIGN_CONFIG=designs/nangate45_3D/${DESIGN_NICKNAME}/config2d.mk cds-preplace
-make DESIGN_CONFIG=designs/nangate45_3D/${DESIGN_NICKNAME}/config2d.mk cds-tier-partition
-make DESIGN_CONFIG=designs/nangate45_3D/${DESIGN_NICKNAME}/config.mk ord-pre
-make DESIGN_CONFIG=designs/nangate45_3D/${DESIGN_NICKNAME}/config.mk cds-3d-pdn
+if [[ "${SKIP_2D_PART:-0}" != "1" ]]; then
+  make DESIGN_CONFIG=designs/nangate45_3D/${DESIGN_NICKNAME}/config.mk clean_all
+  make DESIGN_CONFIG=designs/nangate45_3D/${DESIGN_NICKNAME}/config2d.mk cds-3d-flow-2dpart
+else
+  echo "[INFO] SKIP_2D_PART=1, skip clean_all and cds-3d-flow-2dpart"
+fi
+make DESIGN_CONFIG=designs/nangate45_3D/${DESIGN_NICKNAME}/config.mk cds-pre
+make DESIGN_CONFIG=designs/nangate45_3D/${DESIGN_NICKNAME}/config.mk cds-3d-floorplan
+make DESIGN_CONFIG=designs/nangate45_3D/${DESIGN_NICKNAME}/config.mk cds-3d-io
+make DESIGN_CONFIG=designs/nangate45_3D/${DESIGN_NICKNAME}/config.mk cds-place-macro-upper
+make DESIGN_CONFIG=designs/nangate45_3D/${DESIGN_NICKNAME}/config.mk cds-place-macro-bottom
+make DESIGN_CONFIG=designs/nangate45_3D/${DESIGN_NICKNAME}/config.mk cds-3d-pdn-only
 make DESIGN_CONFIG=designs/nangate45_3D/${DESIGN_NICKNAME}/config.mk cds-place-init
-make DESIGN_CONFIG=designs/nangate45_3D/${DESIGN_NICKNAME}/config.mk cds-place-init-upper
 make DESIGN_CONFIG=designs/nangate45_3D/${DESIGN_NICKNAME}/config.mk cds-place-init-bottom
+make DESIGN_CONFIG=designs/nangate45_3D/${DESIGN_NICKNAME}/config.mk cds-place-init-upper
 iteration=1
-for ((i=1;i<=iteration;i++))
-do
-    echo "Iteration: $i"
-    make DESIGN_CONFIG=designs/nangate45_3D/${DESIGN_NICKNAME}/config.mk cds-place-upper
-    make DESIGN_CONFIG=designs/nangate45_3D/${DESIGN_NICKNAME}/config.mk cds-place-bottom
+for ((i=1;i<=iteration;i++)); do
+  echo "Iteration: $i"
+  make DESIGN_CONFIG=designs/nangate45_3D/${DESIGN_NICKNAME}/config.mk  cds-place-bottom  
+make DESIGN_CONFIG=designs/nangate45_3D/${DESIGN_NICKNAME}/config.mk cds-place-upper
 done
-make DESIGN_CONFIG=designs/nangate45_3D/${DESIGN_NICKNAME}/config.mk cds-place-finish
+make DESIGN_CONFIG=designs/nangate45_3D/${DESIGN_NICKNAME}/config.mk cds-gp2lg
 make DESIGN_CONFIG=designs/nangate45_3D/${DESIGN_NICKNAME}/config.mk cds-legalize-bottom
 make DESIGN_CONFIG=designs/nangate45_3D/${DESIGN_NICKNAME}/config.mk cds-legalize-upper
-make DESIGN_CONFIG=designs/nangate45_3D/${DESIGN_NICKNAME}/config.mk cds-cts 
-make DESIGN_CONFIG=designs/nangate45_3D/${DESIGN_NICKNAME}/config.mk cds-route 
+make DESIGN_CONFIG=designs/nangate45_3D/${DESIGN_NICKNAME}/config.mk cds-cts
+make DESIGN_CONFIG=designs/nangate45_3D/${DESIGN_NICKNAME}/config.mk cds-route
+make DESIGN_CONFIG=designs/nangate45_3D/${DESIGN_NICKNAME}/config.mk cds-restore

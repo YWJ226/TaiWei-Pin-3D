@@ -17,3 +17,19 @@ proc _uniq {lst} {
   foreach x $lst { if {![info exists seen($x)]} { set seen($x) 1; lappend out $x } }
   return $out
 }
+
+proc _common_setup {} {
+  # --- Threading and Analysis ---
+  set init_pwr_net {BOT_VDD TOP_VDD}
+  set init_gnd_net {BOT_VSS TOP_VSS}
+  setMultiCpuUsage -localCpu [_get NUM_CORES 16] 
+  set_power_analysis_mode -leakage_power_view WC_VIEW -dynamic_power_view WC_VIEW
+  set_interactive_constraint_modes {CON} 
+  setAnalysisMode -reset
+  setAnalysisMode -analysisType onChipVariation -cppr both
+  setOptMode -powerEffort low -leakageToDynamicRatio 0.5
+  setGenerateViaMode -auto true
+  generateVias
+  # basic path groups
+  createBasicPathGroups -expanded
+}

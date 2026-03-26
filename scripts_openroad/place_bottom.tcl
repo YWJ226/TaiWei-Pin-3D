@@ -12,28 +12,21 @@ load_design $DEF_IN 2_floorplan.sdc "Starting place bottom"
 source $::env(OPENROAD_SCRIPTS_DIR)/placement_utils.tcl
 
 set place_density [calculate_placement_density]
-mark_insts_by_master "*upper*" FIRM
-puts "Marked upper instances as FIRM"
+# mark_insts_by_master "*upper*" FIRM
+# puts "Marked upper instances as FIRM"
 
 # apply_tier_policy bottom -cts_safe 1 -fixlib 1
 apply_tier_policy bottom -cts_safe 1
 fastroute_setup
 
-log_cmd global_placement -density $place_density \
-    -incremental \
-    -pad_left $::env(CELL_PAD_IN_SITES_GLOBAL_PLACEMENT) \
-    -pad_right $::env(CELL_PAD_IN_SITES_GLOBAL_PLACEMENT) 
-
 set global_placement_args "-routability_driven -timing_driven"
-puts "Running global placement with density: $place_density"
 log_cmd global_placement -density $place_density \
-    -incremental \
     -pad_left $::env(CELL_PAD_IN_SITES_GLOBAL_PLACEMENT) \
     -pad_right $::env(CELL_PAD_IN_SITES_GLOBAL_PLACEMENT) \
     {*}$global_placement_args
 
-mark_insts_by_master "*upper*" PLACED
-puts "Marked upper instances as PLACED"
+# mark_insts_by_master "*upper*" PLACED
+# puts "Marked upper instances as PLACED"
 
 write_def $env(RESULTS_DIR)/$DEF_OUT
 write_verilog $env(RESULTS_DIR)/$VERILOG_OUT

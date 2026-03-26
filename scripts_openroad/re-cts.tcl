@@ -17,8 +17,8 @@ if {[info exists ::env(CTS_LAYER)]} {
   }
 }
 
-mark_insts_by_master "*${fix_layer}*" FIRM
-puts "Marked ${fix_layer} instances as FIRM"
+# mark_insts_by_master "*${fix_layer}*" FIRM
+# puts "Marked ${fix_layer} instances as FIRM"
 
 apply_tier_policy $cts_layer -cts_safe 1
 
@@ -91,8 +91,8 @@ if { $::env(SKIP_CTS_REPAIR_TIMING) } {
 
 source_env_var_if_exists POST_CTS_TCL
 
-mark_insts_by_master "*${fix_layer}*" PLACED
-puts "Marked ${fix_layer} instances as PLACED"
+# mark_insts_by_master "*${fix_layer}*" PLACED
+# puts "Marked ${fix_layer} instances as PLACED"
 
 write_def $::env(RESULTS_DIR)/4_cts.def
 write_verilog $::env(RESULTS_DIR)/4_cts.v

@@ -19,11 +19,12 @@ export LOG_DIR=./logs/asap7_nangate45_3D/${DESIGN_NICKNAME}/${FLOW_VARIANT}
 export OBJECTS_DIR=./objects/asap7_nangate45_3D/${DESIGN_NICKNAME}/${FLOW_VARIANT}
 export REPORTS_DIR=./reports/asap7_nangate45_3D/${DESIGN_NICKNAME}/${FLOW_VARIANT}
 export RESULTS_DIR=./results/asap7_nangate45_3D/${DESIGN_NICKNAME}/${FLOW_VARIANT}
-make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config2d.mk clean_all
-make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config.mk clean_all
-make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config2d.mk ord-synth
-make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config2d.mk ord-preplace
-make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config2d.mk ord-tier-partition
+if [[ "${SKIP_2D_PART:-0}" != "1" ]]; then
+  make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config.mk clean_all
+  make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config2d.mk ord-3d-flow-2dpart
+else
+  echo "[INFO] SKIP_2D_PART=1, skip clean_all and ord-3d-flow-2dpart"
+fi
 make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config.mk ord-pre
 make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config.mk ord-3d-pdn
 make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config.mk ord-place-init
@@ -32,12 +33,13 @@ make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config.mk ord-p
 iteration=1
 for ((i=1;i<=iteration;i++)); do
   echo "Iteration: $i"
-  make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config.mk ord-place-upper
-  make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config.mk  ord-place-bottom
+  make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config.mk ord-place-upper  
+  make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config.mk ord-place-bottom
 done
-make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config.mk ord-pre-opt
+make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config.mk ord-gp2lg
 make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config.mk ord-legalize-bottom
 make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config.mk ord-legalize-upper
 make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config.mk ord-cts 
+make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config.mk ord-cts-post
 make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config.mk ord-route
 make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config.mk ord-final

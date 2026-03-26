@@ -12,7 +12,7 @@ source $::env(OPENROAD_SCRIPTS_DIR)/placement_utils.tcl
 apply_tier_policy upper -cts_safe 1
 set place_density [calculate_placement_density]
 
-mark_insts_by_master "*bottom*" FIRM
+# mark_insts_by_master "*bottom*" FIRM
 
 puts "Running global placement with density: $place_density"
 set global_placement_args ""
@@ -21,7 +21,7 @@ log_cmd global_placement -density $place_density \
         -pad_right $::env(CELL_PAD_IN_SITES_GLOBAL_PLACEMENT) \
         {*}$global_placement_args
 
-mark_insts_by_master "*bottom*" PLACED
+# mark_insts_by_master "*bottom*" PLACED
 
 write_def $env(RESULTS_DIR)/$DEF_OUT
 write_verilog $env(RESULTS_DIR)/$VERILOG_OUT

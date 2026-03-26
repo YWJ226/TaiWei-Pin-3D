@@ -123,6 +123,8 @@ puts "INFO: Using followpins pitch (row height) = $rail_pitch um"
 # PASS-1: BOT global_connect + Core + BOT PDN + pdngen
 ############################################################
 
+or_rebuild_rows_for_site $::env(PLACE_SITE) bottom
+
 puts "INFO: PASS-1: Setting up global connections (BOT only)..."
 clear_global_connect
 
@@ -200,6 +202,8 @@ pdngen_reset_config
 ############################################################
 # PASS-2: TOP global_connect + Core + TOP PDN + pdngen
 ############################################################
+
+or_rebuild_rows_for_site $::env(PLACE_SITE) upper
 
 puts "INFO: PASS-2: Appending global connections (TOP only)..."
 # Do NOT clear_global_connect here; keep BOT rules

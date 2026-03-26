@@ -19,7 +19,7 @@
 # Ensure namespace exists
 if {![namespace exists pc]} {
   namespace eval pc {
-    namespace export setup_basic run_place
+    namespace export common_setup setup_basic run_place
   }
 }
 
@@ -29,53 +29,13 @@ proc pc::_env_or {name default} {
 }
 
 proc pc::setup_basic {} {
-  # --- Threading and Analysis ---
-  catch { setMultiCpuUsage -localCpu [_get NUM_CORES 16] }
-  catch { set_interactive_constraint_modes {CON} }
-  catch { setAnalysisMode -reset }
-  catch { setAnalysisMode -analysisType onChipVariation -cppr both }
-
   # --- Routing Layer Constraints (if set) ---
-  if {[info exists ::env(MAX_ROUTING_LAYER)]} { catch { setDesignMode -topRoutingLayer    $::env(MAX_ROUTING_LAYER) } }
-  if {[info exists ::env(MIN_ROUTING_LAYER)]} { catch { setDesignMode -bottomRoutingLayer $::env(MIN_ROUTING_LAYER) } }
+  if {[info exists ::env(MAX_ROUTING_LAYER)]} { setDesignMode -topRoutingLayer    $::env(MAX_ROUTING_LAYER) } 
+  if {[info exists ::env(MIN_ROUTING_LAYER)]} { setDesignMode -bottomRoutingLayer $::env(MIN_ROUTING_LAYER) } 
 
   # --- Legalization and Filler ---
-  catch { setPlaceMode -place_detail_legalization_inst_gap 1 }
-  catch { setFillerMode -fitGap true }
-
-  # --- Scan Chain (default off, enable when flow is mature) ---
-  set disable_scan [pc::_env_or DISABLE_SCAN_REORDER 1]
-  catch { setPlaceMode -place_global_reorder_scan [expr {$disable_scan ? "false" : "true"}] }
-
-  # --- Timing-Driven (can be disabled for prototyping) ---
-  set non_timing [pc::_env_or NON_TIMING_PLACE 0]
-  if {$non_timing} { catch { setPlaceMode -place_global_timing_effort false } }
-
-  # --- Strictly Honor Instance Padding (Optional) ---
-  if {[pc::_env_or HONOR_INST_PAD 0]} {
-    catch { setPlaceMode -place_detail_honor_inst_pad true }
-  }
-
-  # --- Add instance-level padding as needed ---
-  set pad_l   [pc::_env_or PAD_LEFT  0]
-  set pad_r   [pc::_env_or PAD_RIGHT 0]
-  set pad_rxp [pc::_env_or PAD_REGEX ""]
-  if {($pad_l>0 || $pad_r>0) && $pad_rxp ne ""} {
-    puts "INFO\[pc\]: Applying inst padding L=$pad_l R=$pad_r on regex: $pad_rxp"
-    # Filter using get_db; attribute names may differ between versions, provide fallback
-    set sel {}
-    # Priority: base cell name
-    catch { set sel [get_db insts -if {.[baseCell].name =~ $pad_rxp}] }
-    # Fallback: libcell name path (older versions)
-    if {[llength $sel] == 0} {
-      catch { set sel [get_db insts -if {.[cell].name =~ $pad_rxp}] }
-    }
-    if {[llength $sel] > 0} {
-      catch { setInstPad $sel -left $pad_l -right $pad_r }
-    } else {
-      puts "WARN\[pc\]: No insts matched PAD_REGEX='$pad_rxp' — padding skipped."
-    }
-  }
+  setPlaceMode -place_detail_legalization_inst_gap 1
+  setFillerMode -fitGap true
 }
 
 # Single-step: place_opt_design (recommended)

@@ -18,14 +18,14 @@ if {[info exists ::env(CTS_LAYER)]} {
   puts "CTS LAYER: $cts_layer"
 }
 
-mark_insts_by_master "*${fix_layer}*" FIRM
-puts "Marked ${fix_layer} instances as FIRM"
+# mark_insts_by_master "*${fix_layer}*" FIRM
+# puts "Marked ${fix_layer} instances as FIRM"
 
 apply_tier_policy $cts_layer -cts_safe 1 -fixlib 1
 
 # Clone clock tree inverters next to register loads
 # so cts does not try to buffer the inverted clocks.
-repair_clock_inverters
+log_cmd repair_clock_inverters
 
 proc save_progress { stage } {
   puts "Run 'make gui_$stage.odb' to load progress snapshot"
@@ -36,9 +36,7 @@ proc save_progress { stage } {
 # Run CTS
 set cts_args [list \
   -sink_clustering_enable \
-  -repair_clock_nets \
-  -root_buf $::env(CTS_BUF_CELL) \
-  -buf_list $::env(CTS_BUF_CELL)
+  -repair_clock_nets
   ]
 
 append_env_var cts_args CTS_BUF_DISTANCE -distance_between_buffers 1
@@ -66,7 +64,7 @@ set_placement_padding -global \
 log_cmd repair_clock_nets
 
 # place clock buffers
-log_cmd detailed_placement 
+catch { log_cmd detailed_placement }
 
 estimate_parasitics -placement
 
@@ -92,8 +90,8 @@ if { $::env(SKIP_CTS_REPAIR_TIMING) } {
 
 source_env_var_if_exists POST_CTS_TCL
 
-mark_insts_by_master "*${fix_layer}*" PLACED
-puts "Marked ${fix_layer} instances as PLACED"
+# mark_insts_by_master "*${fix_layer}*" PLACED
+# puts "Marked ${fix_layer} instances as PLACED"
 source $::env(OPENROAD_SCRIPTS_DIR)/report_metrics.tcl
 report_metrics 4 "cts" false false
 

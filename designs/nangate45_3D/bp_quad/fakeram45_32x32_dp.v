@@ -33,11 +33,11 @@ input EMASA;
 input [2:0] EMAB;
 input RET1N;
 
-assign STOV = 1'b0;
-assign EMASA = 1'b0;	
-assign EMAA = 3'b010;	// Extra margin adjustment A: Default for 0.8V
-assign EMAB = 3'b010;	// Extra margin adjustment B: Default for 0.8V
-assign RET1N = 1'b1;	
+// assign STOV = 1'b0;
+// assign EMASA = 1'b0;	
+// assign EMAA = 3'b010;	// Extra margin adjustment A: Default for 0.8V
+// assign EMAB = 3'b010;	// Extra margin adjustment B: Default for 0.8V
+// assign RET1N = 1'b1;	
 wire [31:0] QB;
 wire [31:0] QA1;
 

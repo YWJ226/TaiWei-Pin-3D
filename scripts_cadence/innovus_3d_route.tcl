@@ -20,8 +20,6 @@ set sdc   [file join $RESULTS_DIR "4_cts.sdc"]
 
 source $::env(CADENCE_SCRIPTS_DIR)/mmmc_setup.tcl
 
-setMultiCpuUsage -localCpu [_get NUM_CORES 16]
-
 # --- Initialization ---
 set init_lef_file $lefs
 set init_mmmc_file ""
@@ -29,12 +27,10 @@ set init_design_settop 1
 set init_top_cell $DESIGN
 set init_verilog $V_IN
 set init_design_netlisttype "Verilog"
-setGenerateViaMode -auto true
+
 init_design -setup {WC_VIEW} -hold {BC_VIEW}
-set_power_analysis_mode -leakage_power_view WC_VIEW -dynamic_power_view WC_VIEW
-set_interactive_constraint_modes {CON}
-setAnalysisMode -reset
-setAnalysisMode -analysisType onChipVariation -cppr both
+_common_setup
+
 set_interactive_constraint_modes [all_constraint_modes -active]
 set_propagated_clock [all_clocks]
 set_clock_propagation propagated

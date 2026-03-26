@@ -307,7 +307,7 @@ proc or_find_site_by_name_in_db {site_name} {
   error "ERROR: cannot resolve site '$site_name' via odb::dbLib_findSite in any dbLib."
 }
 
-proc or_rebuild_rows_for_site {new_site} {
+proc or_rebuild_rows_for_site {new_site tier} {
   # die area (microns): {lx ly ux uy}
   lassign [ord::get_die_area] die_lx die_ly die_ux die_uy
 
@@ -340,7 +340,8 @@ proc or_rebuild_rows_for_site {new_site} {
     set halo_max [expr max($halo_x, $halo_y)]
     set blockage_width $halo_max
     source $::env(OPENROAD_SCRIPTS_DIR)/placement_blockages.tcl
-    block_channels $blockage_width
+    clear_channels
+    block_channels $blockage_width $tier
   }
   # make_rows will rebuild rows (and clear existing ones internally)
   make_rows -core_area [list $core_lx $core_ly $core_ux $core_uy] -site $new_site
@@ -484,5 +485,5 @@ proc apply_tier_policy {tier args} {
     if {!$opt(-quiet)} { puts "INFO(OR): Applied DONT_USE_CELLS = '$::env(DONT_USE_CELLS)'." }
   }
 
-  or_rebuild_rows_for_site $::env(PLACE_SITE)
+  or_rebuild_rows_for_site $::env(PLACE_SITE) $tier
 }

@@ -31,10 +31,10 @@ set init_design_settop 1
 set init_top_cell $DESIGN
 set init_verilog $FPVERILOG
 set init_design_netlisttype "Verilog"
-# Initialize the design with specified setup and hold views
+
 init_design -setup {WC_VIEW} -hold {BC_VIEW}
-# Set the power analysis mode for leakage and dynamic power
-set_power_analysis_mode -leakage_power_view WC_VIEW -dynamic_power_view WC_VIEW
+_common_setup
+
 # Read in the floorplan DEF file
 defIn $FPDEF
 
