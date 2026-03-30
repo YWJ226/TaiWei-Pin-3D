@@ -94,7 +94,7 @@ PINS_END_RE   = re.compile(r"^\s*END\s+PINS\b", re.I)
 # DEF component first line:
 #   - <inst> <master> ...
 COMP_FIRST_RE = re.compile(r"^(\s*)-\s+(\S+)\s+(\S+)(.*)$")
-PIN_FIRST_RE = re.compile(r"^\s*-\s+(\S+)\b")
+PIN_FIRST_RE = re.compile(r"^\s*-\s+(\S+)")
 
 # DEF NET connection tuple: ( inst pin ) or ( PIN xxx ) or ( 123 456 ) etc.
 DEF_CONN_RE = re.compile(r"\(\s*(\S+)\s+(\S+)\s*\)")
