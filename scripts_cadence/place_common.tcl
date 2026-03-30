@@ -6,20 +6,12 @@
 # place_common.tcl — Stable pre-GR/pre-legal setup for Innovus placement
 # Dependencies: utils.tcl / lib_setup.tcl / design_setup.tcl / mmmc_setup.tcl must be sourced.
 # Environment Variables (Optional):
-#   PAD_REGEX  : Regex for base cell names to add padding to (e.g., "BUF.*|INV.*")
-#   PAD_LEFT   : Left padding in sites (default 0)
-#   PAD_RIGHT  : Right padding in sites (default 0)
-#   DISABLE_SCAN_REORDER : Set to 1 to disable scan reordering (default 1, more stable)
-#   NON_TIMING_PLACE     : Set to 1 to disable timing-driven placement (default 0)
-#   USE_PLACE_OPT        : Set to 1 to use place_opt_design (default 1)
-#   USE_CONCURRENT_MACRO : Set to 1 for concurrent macro and standard cell placement (default 0; requires movable macros)
-#   HONOR_INST_PAD       : Set to 1 to treat instance padding as a hard rule
 #   MAX_ROUTING_LAYER / MIN_ROUTING_LAYER : Constrain routing layers
 # ==========================================
 # Ensure namespace exists
 if {![namespace exists pc]} {
   namespace eval pc {
-    namespace export common_setup setup_basic run_place
+    namespace export common_setup setup_basic run_place run_place_step run_loop_opt_step
   }
 }
 
@@ -38,31 +30,28 @@ proc pc::setup_basic {} {
   setFillerMode -fitGap true
 }
 
-# Single-step: place_opt_design (recommended)
-proc pc::run_place {} {
-  set use_pod           [pc::_env_or USE_PLACE_OPT 1]
-  set do_concurrent_mac [pc::_env_or USE_CONCURRENT_MACRO 0]
-
-  if {$do_concurrent_mac} {
-    puts "INFO\[pc\]: place_design -concurrent_macros"
-    catch { place_design -concurrent_macros } msg
-    if {[info exists msg] && $msg ne ""} { puts "INFO\[pc\]: $msg" }
-  } else {
-    puts "INFO\[pc\]: Skip concurrent_macros (disabled or no movable macros)."
-  }
-
-  if {$use_pod} {
-    puts "INFO\[pc\]: place_opt_design (integrated preCTS opt)"
-    # Report directory/prefix might be defined in your design script; provide a compatible fallback
-    set reports_dir [expr {[info exists ::REPORTS_DIR] ? $::REPORTS_DIR : "./reports"}]
-    file mkdir $reports_dir
-    catch { place_opt_design -out_dir $reports_dir -prefix prects } msg
-    if {[info exists msg] && $msg ne ""} { puts "INFO\[pc\]: $msg" }
-  } else {
-    puts "INFO\[pc\]: classic flow: place_design + optDesign -preCTS"
-    catch { place_design }
-    catch { optDesign -preCTS }
-  }
-
+# Single-step placement/optimization stage.
+proc pc::run_place_step {{prefix "prects"}} {
+  puts "INFO\[pc\]: place_opt_design (integrated preCTS opt), stage=$prefix"
+  # Report directory/prefix might be defined in your design script; provide a compatible fallback
+  set reports_dir [expr {[info exists ::REPORTS_DIR] ? $::REPORTS_DIR : "./reports"}]
+  file mkdir $reports_dir
+  catch { place_opt_design -out_dir $reports_dir -prefix $prefix } msg
+  if {[info exists msg] && $msg ne ""} { puts "INFO\[pc\]: $msg" }
   catch { checkPlace }
+}
+
+# Outer-loop incremental preCTS optimization stage.
+proc pc::run_loop_opt_step {{prefix "loop_prects"}} {
+  puts "INFO\[pc\]: loop incremental preCTS optimization, stage=$prefix"
+  set reports_dir [expr {[info exists ::REPORTS_DIR] ? $::REPORTS_DIR : "./reports"}]
+  file mkdir $reports_dir
+  catch { optDesign -preCTS -incr -outDir $reports_dir -prefix $prefix } msg
+  if {[info exists msg] && $msg ne ""} { puts "INFO\[pc\]: $msg" }
+  catch { checkPlace }
+}
+
+# Top-level placement entry point.
+proc pc::run_place {} {
+  pc::run_place_step prects
 }

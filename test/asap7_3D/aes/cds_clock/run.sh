@@ -27,6 +27,7 @@ fi
 make DESIGN_CONFIG=designs/asap7_3D/${DESIGN_NICKNAME}/config.mk cds-pre
 make DESIGN_CONFIG=designs/asap7_3D/${DESIGN_NICKNAME}/config.mk cds-3d-floorplan
 make DESIGN_CONFIG=designs/asap7_3D/${DESIGN_NICKNAME}/config.mk cds-3d-io
+make DESIGN_CONFIG=designs/asap7_3D/${DESIGN_NICKNAME}/config.mk cds-3d-split-net
 make DESIGN_CONFIG=designs/asap7_3D/${DESIGN_NICKNAME}/config.mk cds-place-macro-upper
 make DESIGN_CONFIG=designs/asap7_3D/${DESIGN_NICKNAME}/config.mk cds-place-macro-bottom
 make DESIGN_CONFIG=designs/asap7_3D/${DESIGN_NICKNAME}/config.mk cds-3d-pdn-only

@@ -1,48 +1,28 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DESIGN_DIR="$(dirname "${SCRIPT_DIR}")"
+PLATFORM_DIR="$(dirname "${DESIGN_DIR}")"
+DESIGN_NICKNAME="$(basename "${DESIGN_DIR}")"
+ENABLEMENT="$(basename "${PLATFORM_DIR}")"
+FLOW_VARIANT="${FLOW_VARIANT:-cadence}"
+USE_FLOW="cadence"
+
 FLOW_ROOT="${SCRIPT_DIR}"
 while [[ "${FLOW_ROOT}" != "/" && ! -f "${FLOW_ROOT}/env.sh" ]]; do
   FLOW_ROOT="$(dirname "${FLOW_ROOT}")"
 done
+
 if [[ ! -f "${FLOW_ROOT}/env.sh" ]]; then
   echo "ERROR: env.sh not found for ${SCRIPT_DIR}" >&2
   exit 1
 fi
-source "${FLOW_ROOT}/env.sh"
 
-export DESIGN_DIMENSION="3D"
-export DESIGN_NICKNAME="swerv_wrapper"
-export USE_FLOW="cadence"
-export FLOW_VARIANT="cadence"
-# export OPEN_GUI=0
-export LOG_DIR=./logs/asap7_nangate45_3D/${DESIGN_NICKNAME}/${FLOW_VARIANT}
-export OBJECTS_DIR=./objects/asap7_nangate45_3D/${DESIGN_NICKNAME}/${FLOW_VARIANT}
-export REPORTS_DIR=./reports/asap7_nangate45_3D/${DESIGN_NICKNAME}/${FLOW_VARIANT}
-export RESULTS_DIR=./results/asap7_nangate45_3D/${DESIGN_NICKNAME}/${FLOW_VARIANT}
-if [[ "${SKIP_2D_PART:-0}" != "1" ]]; then
-  make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config.mk clean_all
-  make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config2d.mk cds-3d-flow-2dpart
-else
-  echo "[INFO] SKIP_2D_PART=1, skip clean_all and cds-3d-flow-2dpart"
+CANONICAL_SCRIPT="${FLOW_ROOT}/test/commercial/CDS_3D_NEW_FLOW.sh"
+if [[ ! -x "${CANONICAL_SCRIPT}" ]]; then
+  echo "ERROR: commercial launcher not found: ${CANONICAL_SCRIPT}" >&2
+  exit 1
 fi
-make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config.mk cds-pre
-make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config.mk cds-3d-floorplan
-make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config.mk cds-3d-io
-make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config.mk cds-place-macro-upper
-make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config.mk cds-place-macro-bottom
-make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config.mk cds-3d-pdn-only
-make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config.mk cds-place-init
-make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config.mk cds-place-init-bottom
-make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config.mk cds-place-init-upper
-iteration=1
-for ((i=1;i<=iteration;i++)); do
-  echo "Iteration: $i"
-  make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config.mk  cds-place-bottom  
-make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config.mk cds-place-upper
-done
-make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config.mk cds-gp2lg
-make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config.mk cds-legalize-bottom
-make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config.mk cds-legalize-upper
-make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config.mk cds-cts
-make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config.mk cds-route
-make DESIGN_CONFIG=designs/asap7_nangate45_3D/${DESIGN_NICKNAME}/config.mk cds-restore
+
+exec bash "${CANONICAL_SCRIPT}" "${ENABLEMENT}" "${FLOW_VARIANT}" "${USE_FLOW}" "${DESIGN_NICKNAME}"

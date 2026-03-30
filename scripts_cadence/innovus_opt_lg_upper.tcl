@@ -2,7 +2,7 @@
 # commands and reports are copyrighted by Cadence. We thank Cadence for
 # granting permission to share our research to help promote and foster the next
 # generation of innovators.
-# --- Legalize ONLY UPPER tier ---
+# --- Final legalize/polish on UPPER tier ---
 source $::env(CADENCE_SCRIPTS_DIR)/utils.tcl
 source $::env(CADENCE_SCRIPTS_DIR)/lib_setup.tcl
 source $::env(CADENCE_SCRIPTS_DIR)/design_setup.tcl
@@ -37,14 +37,24 @@ checkPlace
 setPlaceMode -place_detail_legalization_inst_gap 1
 setFillerMode -fitGap true
 source $::env(CADENCE_SCRIPTS_DIR)/tier_cell_policy.tcl
+source $::env(CADENCE_SCRIPTS_DIR)/extract_report.tcl
+
+set allow_net [_requested_allow_net_class 0]
+if {$allow_net eq "all"} {
+  set allow_net [_normalize_allow_net_class "upper-only"]
+}
+puts "INFO: upper legalize allow_net = [_format_allow_net_class $allow_net]"
 
 set_tier_placement_status bottom fixed
-apply_tier_policy upper -fixlib 1
-# apply_tier_policy upper
-catch { place_opt_design -out_dir $REPORTS_DIR -prefix legalize_upper }
+saveNetlist [file join $RESULTS_DIR "${DESIGN}_3D.legalize_upper.before.v"]
+extract_cross_tier_nets [file join $LOG_DIR "legalize_upper.before.nets"]
+apply_tier_policy upper -fixlib 1 -allow_net $allow_net
+catch { optDesign -incr -outDir $REPORTS_DIR -prefix legalize_upper }
 checkPlace
 
 set_tier_placement_status bottom placed
+extract_cross_tier_nets [file join $LOG_DIR "legalize_upper.after.nets"]
+saveNetlist [file join $RESULTS_DIR "${DESIGN}_3D.legalize_upper.after.v"]
 
 fit
 dumpToGIF $LOG_DIR/4_2_lg_upper.png
@@ -53,6 +63,6 @@ set DEF_OUT  [file join $RESULTS_DIR "${DESIGN}_3D.lg.def"]
 set V_OUT [file join $RESULTS_DIR "${DESIGN}_3D.lg.v"]
 defOut -floorplan $DEF_OUT
 saveNetlist $V_OUT
-puts "INFO: Upper-only legalized DEF -> $DEF_OUT"
-puts "INFO: Upper-only legalized Verilog -> $V_OUT"
+puts "INFO: Upper-tier final legalize DEF -> $DEF_OUT"
+puts "INFO: Upper-tier final legalize Verilog -> $V_OUT"
 exit

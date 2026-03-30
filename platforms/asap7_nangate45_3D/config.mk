@@ -15,7 +15,14 @@ ifeq ($(USE_FLOW),openroad)
   export MAKE_TRACKS       ?= $(PLATFORM_DIR)/openRoad/make_tracks.2A6M10M.tcl
 endif
 export MIN_CLK_ROUTING_LAYER ?= M2
-export TECH_LEF  ?= $(PLATFORM_DIR)/lef/asap7_nangate45_6M10M.lef
+# export CREATE_OBS_STAGE?="1"
+export OBS_TECH_LEF  ?= $(PLATFORM_DIR)/lef/asap7_nangate45_7MHBT10M.lef
+export DEFAULT_3D_TECH_LEF  ?= $(PLATFORM_DIR)/lef/asap7_nangate45_6M10M.lef
+ifneq ($(strip $(CREATE_OBS_STAGE)),)
+  export TECH_LEF  ?= $(OBS_TECH_LEF)
+else
+  export TECH_LEF  ?= $(DEFAULT_3D_TECH_LEF)
+endif
 export RCX_RULES         ?= $(PLATFORM_DIR)/asap7_nangate45_6M10M.rcx_patterns.rules
 export SET_RC_TCL               ?= $(PLATFORM_DIR)/setRC_6M10M.tcl
 
@@ -71,6 +78,7 @@ export UPPER_SITE  = asap7sc7p5t
 export BOTTOM_SITE = FreePDK45_38x28_10R_NP_162NW_34O
 export IO_PLACER_H ?= M4_m
 export IO_PLACER_V ?= M3_m
+export HBT_MAX_CORE_UTILIZATION ?= 0.8
 
 # PDN / Endcap / Welltie（3D 策略）
 export PDN_TCL      ?= $(PLATFORM_DIR)/openRoad/pdn/grid_strategy-3D.tcl

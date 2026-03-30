@@ -475,7 +475,7 @@ LAYER hb_layer
   TYPE CUT ;
   SPACING 0.5 ;
   WIDTH 0.5 ;
-  RESISTANCE 0.02 ;
+  RESISTANCE 3 ;
 END hb_layer
 
 LAYER M6_m

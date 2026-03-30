@@ -144,6 +144,7 @@ export DONT_USE_SC_LIB ?= $(firstword $(DONT_USE_LIBS))
 # Fallbacks: if LIB_DIR / LEF_DIR are not provided by platform config, infer them safely.
 export LIB_DIR ?= $(firstword $(sort $(dir $(LIB_FILES))))
 export LEF_DIR ?= $(dir $(TECH_LEF))
+ALLOW_NET_TAG := $(if $(strip $(TIER_ALLOW_NET)),.$(TIER_ALLOW_NET),)
 
 .SECONDEXPANSION:
 $(DONT_USE_LIBS): $$(filter %$$(@F) %$$(@F).gz,$(LIB_FILES))
@@ -181,7 +182,10 @@ export GPL_ROUTABILITY_DRIVEN ?= 1
 export ENABLE_DPO ?= 1
 export DPO_MAX_DISPLACEMENT ?= 5 1
 
+# Public CTS knobs. Keep this list short and documented.
 export CTS_LAYER ?= bottom
+export F2F_CTS_MODE ?= single_trunk_handoff
+export F2F_CTS_HANDOFFS_PER_DOMAIN ?= 1
 ifeq ($(CTS_LAYER),upper)
   export COVER_LAYER ?= bottom
 else ifeq ($(CTS_LAYER),bottom)
@@ -215,6 +219,15 @@ else
 	LEF_FILES_CTS ?= $(TECH_LEF) $(SC_LEF_CTS) $(ADDITIONAL_LEFS_CTS)
 	LEF_FILES_NONE_CTS ?= $(LEF_FILES_UPPER_COVER)
 endif
+
+LEF_FILES_CTS_OWNER ?= $(LEF_FILES_CTS)
+LEF_FILES_CTS_RECEIVE ?= $(LEF_FILES_NONE_CTS)
+LEF_FILES_CTS_FINALIZE ?= $(LEF_FILES_NONE_CTS)
+LEF_FILES_SPLIT ?= $(TECH_LEF) $(SC_LEF) $(ADDITIONAL_LEFS_DEFAULT)
+LEF_FILES_ROUTE_ONLY ?= $(LEF_FILES_NONE_CTS)
+LEF_FILES_ROUTE ?= $(LEF_FILES_ROUTE_ONLY)
+LEF_FILES_POSTROUTE_RECEIVE ?= $(LEF_FILES_NONE_CTS)
+LEF_FILES_POSTROUTE_OWNER ?= $(LEF_FILES_CTS)
 
 # =========================================
 # ============ OpenROAD (ord-*) ===========
@@ -647,6 +660,12 @@ cds-3d-io:
 	@echo "[CDS] 3D IO placement"
 	$(call _run_with_tmp_log,$(LOG_DIR)/2_4_floorplan_io.log,$(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_2_4_floorplan_io.log -files $(CADENCE_SCRIPTS_DIR)/innovus_3d_io_place.tcl)
 
+.PHONY: cds-3d-split-net
+cds-3d-split-net:
+	@$(call _mkstdirs)
+	@echo "[CDS] 3D mixed-tier split net"
+	$(call _run_with_tmp_log,$(LOG_DIR)/2_4_floorplan_split.log,LEF_FILES="$(LEF_FILES_SPLIT)" $(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_2_4_floorplan_split.log -files $(CADENCE_SCRIPTS_DIR)/innovus_3d_split_net.tcl)
+
 .PHONY: cds-place-macro-upper
 cds-place-macro-upper:
 	@$(call _mkstdirs)
@@ -700,14 +719,14 @@ cds-place-init-bottom:
 .PHONY: cds-place-upper
 cds-place-upper:
 	@$(call _mkstdirs)
-	@echo "[CDS] Place upper"
-	$(call _run_with_tmp_log,$(LOG_DIR)/3_place_upper.log,LEF_FILES="$(LEF_FILES_BOTTOM_COVER)" $(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_place_upper.log -files $(CADENCE_SCRIPTS_DIR)/innovus_place3D_upper.tcl)
+	@echo "[CDS] Loop preCTS opt upper (allow net: $${TIER_ALLOW_NET:-all})"
+	$(call _run_with_tmp_log,$(LOG_DIR)/3_place_upper$(ALLOW_NET_TAG).log,LEF_FILES="$(LEF_FILES_BOTTOM_COVER)" $(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_place_upper$(ALLOW_NET_TAG).log -files $(CADENCE_SCRIPTS_DIR)/innovus_place3D_upper.tcl)
 
 .PHONY: cds-place-bottom
 cds-place-bottom:
 	@$(call _mkstdirs)
-	@echo "[CDS] Place bottom"
-	$(call _run_with_tmp_log,$(LOG_DIR)/3_place_bottom.log,LEF_FILES="$(LEF_FILES_UPPER_COVER)" $(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_place_bottom.log -files $(CADENCE_SCRIPTS_DIR)/innovus_place3D_bottom.tcl)
+	@echo "[CDS] Loop preCTS opt bottom (allow net: $${TIER_ALLOW_NET:-all})"
+	$(call _run_with_tmp_log,$(LOG_DIR)/3_place_bottom$(ALLOW_NET_TAG).log,LEF_FILES="$(LEF_FILES_UPPER_COVER)" $(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_place_bottom$(ALLOW_NET_TAG).log -files $(CADENCE_SCRIPTS_DIR)/innovus_place3D_bottom.tcl)
 
 .PHONY: cds-gp2lg
 cds-gp2lg:
@@ -735,18 +754,74 @@ cds-legalize-bottom:
 .PHONY: cds-cts
 cds-cts:
 	@$(call _mkstdirs)
-	@echo "[CDS] CTS"
-	$(call _run_with_tmp_log,$(LOG_DIR)/4_1_cts.log,LEF_FILES="$(LEF_FILES_CTS)" COVER_LAYER="$(COVER_LAYER)" $(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_3d_cts.log -files $(CADENCE_SCRIPTS_DIR)/innovus_3d_cts.tcl)
-	@cp -f $(RESULTS_DIR)/4_1_cts.v   $(RESULTS_DIR)/4_cts.v
-	@cp -f $(RESULTS_DIR)/4_1_cts.def $(RESULTS_DIR)/4_cts.def
-	@cp -f $(RESULTS_DIR)/3_place.sdc $(RESULTS_DIR)/4_cts.sdc
+	@echo "[CDS] CTS (owner-tree -> receive-opt -> finalize)"
+	@$(MAKE) --no-print-directory DESIGN_CONFIG="$(DESIGN_CONFIG)" cds-cts-owner-tree
+	@$(MAKE) --no-print-directory DESIGN_CONFIG="$(DESIGN_CONFIG)" cds-cts-receive-opt
+	@$(MAKE) --no-print-directory DESIGN_CONFIG="$(DESIGN_CONFIG)" cds-cts-finalize
+	@cat $(LOG_DIR)/4_0_cts_owner_tree.log $(LOG_DIR)/4_1_cts_receive_opt.log $(LOG_DIR)/4_3_cts_finalize.log > $(LOG_DIR)/4_1_cts.log
+	@cat $(LOG_DIR)/cadence_innovus_3d_cts_owner_tree.log $(LOG_DIR)/cadence_innovus_3d_cts_receive_opt.log $(LOG_DIR)/cadence_innovus_3d_cts_finalize.log > $(LOG_DIR)/cadence_innovus_3d_cts.log
+
+# Explicit legacy CTS target for robustness comparison.
+.PHONY: cds-cts-legacy
+cds-cts-legacy:
+	@$(call _mkstdirs)
+	@echo "[CDS] Legacy CTS"
+	$(call _run_with_tmp_log,$(LOG_DIR)/4_1_cts.log,SC_FILE="$(SC_LEF_CTS)" SC_LEF="$(SC_LEF_CTS)" LEF_FILES="$(LEF_FILES_CTS)" ADDITIONAL_LEFS="$(ADDITIONAL_LEFS_CTS)" COVER_LAYER="$(COVER_LAYER)" $(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_3d_cts.log -files $(CADENCE_SCRIPTS_DIR)/innovus_3d_cts_legacy.tcl)
+
+# Internal staged CTS targets. The public interface should stay cds-cts.
+.PHONY: cds-cts-owner-tree
+cds-cts-owner-tree:
+	@$(call _mkstdirs)
+	@echo "[CDS] CTS owner-tree (LEF/COVER: LEF_FILES_CTS_OWNER)"
+	$(call _run_with_tmp_log,$(LOG_DIR)/4_0_cts_owner_tree.log,LEF_FILES="$(LEF_FILES_CTS_OWNER)" COVER_LAYER="$(COVER_LAYER)" $(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_3d_cts_owner_tree.log -files $(CADENCE_SCRIPTS_DIR)/innovus_3d_cts_owner_tree.tcl)
+
+.PHONY: cds-cts-receive-opt
+cds-cts-receive-opt:
+	@$(call _mkstdirs)
+	@echo "[CDS] CTS receive-opt (LEF/COVER: LEF_FILES_CTS_RECEIVE)"
+	$(call _run_with_tmp_log,$(LOG_DIR)/4_1_cts_receive_opt.log,LEF_FILES="$(LEF_FILES_CTS_RECEIVE)" COVER_LAYER="$(COVER_LAYER)" $(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_3d_cts_receive_opt.log -files $(CADENCE_SCRIPTS_DIR)/innovus_3d_cts_receive_opt.tcl)
+
+.PHONY: cds-cts-finalize
+cds-cts-finalize:
+	@$(call _mkstdirs)
+	@echo "[CDS] CTS finalize (LEF/COVER: LEF_FILES_CTS_FINALIZE)"
+	$(call _run_with_tmp_log,$(LOG_DIR)/4_3_cts_finalize.log,LEF_FILES="$(LEF_FILES_CTS_FINALIZE)" COVER_LAYER="$(COVER_LAYER)" $(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_3d_cts_finalize.log -files $(CADENCE_SCRIPTS_DIR)/innovus_3d_cts_finalize.tcl)
 
 .PHONY: cds-route
 cds-route:
 	@$(call _mkstdirs)
-	@echo "[CDS] Route"
-	$(call _run_with_tmp_log,$(LOG_DIR)/5_route.log,$(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_3d_route.log -files $(CADENCE_SCRIPTS_DIR)/innovus_3d_route.tcl)
-	@cp -f $(RESULTS_DIR)/4_cts.sdc $(RESULTS_DIR)/5_route.sdc 2>/dev/null || true
+	@echo "[CDS] Route (route-only -> postroute-receive -> postroute-owner)"
+	@$(MAKE) --no-print-directory DESIGN_CONFIG="$(DESIGN_CONFIG)" cds-route-only
+	@$(MAKE) --no-print-directory DESIGN_CONFIG="$(DESIGN_CONFIG)" cds-postroute-receive
+	@$(MAKE) --no-print-directory DESIGN_CONFIG="$(DESIGN_CONFIG)" cds-postroute-owner
+	@cat $(LOG_DIR)/5_0_route.log $(LOG_DIR)/5_1_postroute_receive.log $(LOG_DIR)/5_2_postroute_owner.log > $(LOG_DIR)/5_route.log
+	@cat $(LOG_DIR)/cadence_innovus_3d_route_only.log $(LOG_DIR)/cadence_innovus_3d_postroute_receive.log $(LOG_DIR)/cadence_innovus_3d_postroute_owner.log > $(LOG_DIR)/cadence_innovus_3d_route.log
+
+# Explicit legacy route target for robustness comparison.
+.PHONY: cds-route-legacy
+cds-route-legacy:
+	@$(call _mkstdirs)
+	@echo "[CDS] Legacy route"
+	$(call _run_with_tmp_log,$(LOG_DIR)/5_route.log,LEF_FILES="$(LEF_FILES_ROUTE)" $(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_3d_route.log -files $(CADENCE_SCRIPTS_DIR)/innovus_3d_route_legacy.tcl)
+
+# Internal staged route targets. The public interface should stay cds-route.
+.PHONY: cds-route-only
+cds-route-only:
+	@$(call _mkstdirs)
+	@echo "[CDS] Route only (LEF/COVER: LEF_FILES_ROUTE_ONLY)"
+	$(call _run_with_tmp_log,$(LOG_DIR)/5_0_route.log,LEF_FILES="$(LEF_FILES_ROUTE_ONLY)" $(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_3d_route_only.log -files $(CADENCE_SCRIPTS_DIR)/innovus_3d_route_only.tcl)
+
+.PHONY: cds-postroute-receive
+cds-postroute-receive:
+	@$(call _mkstdirs)
+	@echo "[CDS] PostRoute receive (LEF/COVER: LEF_FILES_POSTROUTE_RECEIVE)"
+	$(call _run_with_tmp_log,$(LOG_DIR)/5_1_postroute_receive.log,LEF_FILES="$(LEF_FILES_POSTROUTE_RECEIVE)" $(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_3d_postroute_receive.log -files $(CADENCE_SCRIPTS_DIR)/innovus_3d_postroute_receive.tcl)
+
+.PHONY: cds-postroute-owner
+cds-postroute-owner:
+	@$(call _mkstdirs)
+	@echo "[CDS] PostRoute owner (LEF/COVER: LEF_FILES_POSTROUTE_OWNER)"
+	$(call _run_with_tmp_log,$(LOG_DIR)/5_2_postroute_owner.log,LEF_FILES="$(LEF_FILES_POSTROUTE_OWNER)" $(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_3d_postroute_owner.log -files $(CADENCE_SCRIPTS_DIR)/innovus_3d_postroute_owner.tcl)
 
 .PHONY: cds-final
 cds-final:

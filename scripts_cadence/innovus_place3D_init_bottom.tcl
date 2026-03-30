@@ -10,6 +10,8 @@ source $::env(CADENCE_SCRIPTS_DIR)/utils.tcl
 source $::env(CADENCE_SCRIPTS_DIR)/lib_setup.tcl
 source $::env(CADENCE_SCRIPTS_DIR)/design_setup.tcl
 source $::env(CADENCE_SCRIPTS_DIR)/place_common.tcl
+source $::env(CADENCE_SCRIPTS_DIR)/tier_cell_policy.tcl
+source $::env(CADENCE_SCRIPTS_DIR)/extract_report.tcl
 
 # Get directory paths from the environment/setup
 set LOG_DIR       [_get LOG_DIR]
@@ -38,15 +40,17 @@ _common_setup
 # Read in the floorplan DEF file
 defIn $FPDEF
 
-source $::env(CADENCE_SCRIPTS_DIR)/tier_cell_policy.tcl
-
 set_tier_placement_status upper fixed
-apply_tier_policy bottom
+saveNetlist [file join $RESULTS_DIR "${DESIGN}_3D.init_bottom.before.v"]
+extract_cross_tier_nets [file join $LOG_DIR "place_3d_init_bottom.before.nets"]
+apply_tier_policy bottom -fixlib 1 -allow_net bottom-only
 
-setPlaceMode -place_design_refine_place false
-place_design
+pc::setup_basic
+pc::run_loop_opt_step init_bottom
 
 set_tier_placement_status upper placed
+extract_cross_tier_nets [file join $LOG_DIR "place_3d_init_bottom.after.nets"]
+saveNetlist [file join $RESULTS_DIR "${DESIGN}_3D.init_bottom.after.v"]
 
 # Define output file paths for the placed design
 set GPDEFOUT [file join $RESULTS_DIR "${DESIGN}_3D.tmp.def"]
@@ -58,9 +62,9 @@ saveNetlist $GPVOUT
 # Fit the design view to the window
 fit
 # Dump a screenshot of the layout
-dumpToGIF $LOG_DIR/init_place_bottom.png
+dumpToGIF $LOG_DIR/3_place_init_bottom.png
 # Print completion message
-puts "INFO: 3D place init done. DEF: $GPDEFOUT  V: $GPVOUT"
+puts "INFO: 3D bottom tier incremental init done. DEF: $GPDEFOUT  V: $GPVOUT"
 
 # Exit the tool
 exit

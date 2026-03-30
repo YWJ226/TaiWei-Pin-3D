@@ -16,6 +16,7 @@
 #   apply_tier_policy upper   (or bottom)
 # ==========================================
 source $::env(CADENCE_SCRIPTS_DIR)/place_macro_util.tcl
+source $::env(CADENCE_SCRIPTS_DIR)/tier_classification.tcl
 
 proc _as_list {envname} {
   if {[info exists ::env($envname)] && $::env($envname) ne ""} {
@@ -194,9 +195,224 @@ proc set_dont_touch_by_ref_suffix {suffix args} {
 }
 
 # ------------------------------------------------------------
-# Only modify apply_tier_policy: add option
-#   -lock_other_tier_nets 1 (default): also lock nets of the other tier
-#   CTS stage: call with -lock_other_tier_nets 0
+# Helper:
+# Return three flags for a net:
+#   has_upper   : connected to at least one upper-tier object
+#   has_bottom  : connected to at least one bottom-tier object
+#   has_unknown : connected to at least one object with unknown tier
+#
+# IMPORTANT:
+#   Use "dbGet -e" to avoid counting "0x0" as a real object.
+# ------------------------------------------------------------
+proc _net_tier_presence {net_ptr} {
+  lassign [tier_net_presence_counts $net_ptr] upper_count bottom_count unknown_count
+  return [list [expr {$upper_count > 0}] [expr {$bottom_count > 0}] [expr {$unknown_count > 0}]]
+}
+
+# ------------------------------------------------------------
+# Net-class strategy:
+#   upper_only : upper-tier objects only
+#   bottom_only: bottom-tier objects only
+#   mixed      : both upper-tier and bottom-tier objects, still optimizable
+#   unknown    : any net with unknown-tier connectivity, kept locked
+# ------------------------------------------------------------
+proc _net_optimization_class {net_ptr} {
+  lassign [_net_tier_presence $net_ptr] has_upper has_bottom has_unknown
+
+  if {$has_unknown} {
+    return "unknown"
+  }
+  if {$has_upper && $has_bottom} {
+    return "mixed"
+  }
+  if {$has_upper} {
+    return "upper_only"
+  }
+  if {$has_bottom} {
+    return "bottom_only"
+  }
+  return "ignore"
+}
+
+proc _net_class_is_unlocked {allow_net klass} {
+  switch -- $allow_net {
+    all {
+      return [expr {$klass ne "unknown"}]
+    }
+    upper_only {
+      return [expr {$klass eq "upper_only" || $klass eq "mixed"}]
+    }
+    bottom_only {
+      return [expr {$klass eq "bottom_only" || $klass eq "mixed"}]
+    }
+    default {
+      error "Unexpected allow_net class '$allow_net'"
+    }
+  }
+}
+
+proc _lock_state_name {lock_net} {
+  if {$lock_net} {
+    return "locked"
+  }
+  return "unlocked"
+}
+
+proc _set_net_dont_touch_flag {net_name flag quiet} {
+  set net_obj [get_nets $net_name]
+  if {$net_obj eq ""} {
+    if {!$quiet} {
+      puts "WARN: cannot resolve net object for $net_name"
+    }
+    return 0
+  }
+
+  if {$flag} {
+    if {[catch {set_dont_touch $net_obj true} err]} {
+      if {[catch {set_dont_touch $net_obj} err2]} {
+        if {!$quiet} {
+          puts "WARN: failed to lock net $net_name : $err / $err2"
+        }
+        return 0
+      }
+    }
+  } else {
+    if {[catch {set_dont_touch $net_obj false} err]} {
+      if {[catch {remove_attribute $net_obj dont_touch} err2]} {
+        if {[catch {reset_attribute $net_obj dont_touch} err3]} {
+          if {!$quiet} {
+            puts "WARN: failed to unlock net $net_name : $err / $err2 / $err3"
+          }
+          return 0
+        }
+      }
+    }
+  }
+  return 1
+}
+
+proc _apply_net_class_optimization_mask {active_class quiet} {
+  array set stats {
+    upper_only_locked 0
+    upper_only_unlocked 0
+    bottom_only_locked 0
+    bottom_only_unlocked 0
+    mixed_locked 0
+    mixed_unlocked 0
+    unknown_locked 0
+    unknown_unlocked 0
+  }
+  set ignore_cnt 0
+  set fail_cnt 0
+
+  foreach n [dbGet -e top.nets] {
+    if {[dbGet $n.isPwrOrGnd]} {
+      continue
+    }
+
+    set klass [_net_optimization_class $n]
+    if {$klass eq "ignore"} {
+      incr ignore_cnt
+      continue
+    }
+
+    set net_name [dbGet $n.name]
+    set unlock_net [_net_class_is_unlocked $active_class $klass]
+    set lock_net [expr {!$unlock_net}]
+
+    if {![_set_net_dont_touch_flag $net_name $lock_net $quiet]} {
+      incr fail_cnt
+      continue
+    }
+
+    set state_name [_lock_state_name $lock_net]
+    set stat_key "${klass}_${state_name}"
+    incr stats($stat_key)
+  }
+
+  if {!$quiet} {
+    puts "INFO: Applied staged net-class mask for active_class=$active_class"
+    puts "INFO:   upper_only unlocked=$stats(upper_only_unlocked) locked=$stats(upper_only_locked)"
+    puts "INFO:   bottom_only unlocked=$stats(bottom_only_unlocked) locked=$stats(bottom_only_locked)"
+    puts "INFO:   mixed unlocked=$stats(mixed_unlocked) locked=$stats(mixed_locked)"
+    puts "INFO:   unknown unlocked=$stats(unknown_unlocked) locked=$stats(unknown_locked)"
+    puts "INFO:   ignored=$ignore_cnt failures=$fail_cnt"
+  }
+}
+
+proc _normalize_allow_net_class {raw_class} {
+  set key [string tolower [string trim $raw_class]]
+  switch -- $key {
+    "" -
+    "all" -
+    "none" -
+    "off" -
+    "disabled" {
+      return "all"
+    }
+    "upper" -
+    "upper-only" -
+    "upper_only" {
+      return "upper_only"
+    }
+    "bottom" -
+    "bottom-only" -
+    "bottom_only" {
+      return "bottom_only"
+    }
+    default {
+      error "Unknown allow_net '$raw_class'. Use upper-only / bottom-only / all."
+    }
+  }
+}
+
+proc _format_allow_net_class {allow_net} {
+  switch -- $allow_net {
+    "upper_only" {
+      return "upper-only"
+    }
+    "bottom_only" {
+      return "bottom-only"
+    }
+    default {
+      return "all"
+    }
+  }
+}
+
+proc _requested_allow_net_class {quiet} {
+  set raw_class ""
+  if {[info exists ::env(TIER_ALLOW_NET)]} {
+    set raw_class $::env(TIER_ALLOW_NET)
+  } elseif {[info exists ::env(ALLOW_NET)]} {
+    set raw_class $::env(ALLOW_NET)
+  }
+
+  set active_class [_normalize_allow_net_class $raw_class]
+  if {!$quiet} {
+    puts "INFO: Requested allow_net '$raw_class' -> $active_class"
+  }
+  return $active_class
+}
+
+proc _allow_net_stage_tag {allow_net} {
+  if {$allow_net eq "all"} {
+    return ""
+  }
+  return ".[_format_allow_net_class $allow_net]"
+}
+
+# ------------------------------------------------------------
+# apply_tier_policy:
+# -fixlib: fix the other tier library
+# -notouch: fix the other tier cell
+# -allow_net: keep only one net class movable in this run
+#   Allowed values:
+#     upper-only / bottom-only / all
+#   Behavior:
+#     upper-only  -> unlock upper_only + mixed, lock bottom_only + unknown
+#     bottom-only -> unlock bottom_only + mixed, lock upper_only + unknown
+#     all         -> unlock upper_only + bottom_only + mixed, lock unknown
 # ------------------------------------------------------------
 proc apply_tier_policy {tier args} {
   set tier [string tolower $tier]
@@ -204,21 +420,23 @@ proc apply_tier_policy {tier args} {
     error "apply_tier_policy: tier must be 'upper' or 'bottom'"
   }
 
-  # New options (default: lock nets)
   array set opt {
-    -quiet               0
-    -fixlib 0
-    -notouch 0
+    -quiet      0
+    -fixlib     0
+    -notouch    0
+    -allow_net  all
   }
+
   if {([llength $args] % 2) != 0} {
     error "apply_tier_policy: args must be key-value pairs, got: $args"
   }
   foreach {k v} $args {
-    if {![info exists opt($k)]} { error "apply_tier_policy: unknown option $k" }
+    if {![info exists opt($k)]} {
+      error "apply_tier_policy: unknown option $k"
+    }
     set opt($k) $v
   }
 
-  # ---- your original env-driven lists (kept unchanged) ----
   set DNU_UP   [_as_list DNU_FOR_UPPER]
   set DNU_BOT  [_as_list DNU_FOR_BOTTOM]
   set FILL_UP  [_as_list FILL_CELLS_UPPER]
@@ -227,44 +445,48 @@ proc apply_tier_policy {tier args} {
   set TAP_BOT  [_as_list TAPCELL_BOTTOM]
 
   if {$tier eq "upper"} {
-    # (A) dont_use policy (unchanged)
     if {$opt(-fixlib)} {
       _set_dont_use [_expand_libcells $DNU_UP] true
-    } 
+    }
 
-    if {[llength $FILL_UP]} { setFillerMode -core $FILL_UP }
+    if {[llength $FILL_UP]} {
+      setFillerMode -core $FILL_UP
+    }
 
     if {[info exists ::env(UPPER_SITE)] && $::env(UPPER_SITE) ne ""} {
       set ::env(PLACE_SITE) $::env(UPPER_SITE)
     }
 
-    # (B) NEW: lock the OTHER tier by master suffix "*_bottom"
     if {$opt(-notouch)} {
-      set_dont_touch_by_ref_suffix "*_bottom" \
-      -quiet $opt(-quiet)
+      set_dont_touch_by_ref_suffix "*_bottom" -quiet $opt(-quiet)
     }
 
-    # puts "INFO: Tier policy applied for UPPER: dont_use(bottom libs), dont_touch(bottom insts), filler=UPPER."
   } else {
-    # bottom
     if {$opt(-fixlib)} {
       _set_dont_use [_expand_libcells $DNU_BOT] true
     }
 
-    if {[llength $FILL_BOT]} { setFillerMode -core $FILL_BOT }
+    if {[llength $FILL_BOT]} {
+      setFillerMode -core $FILL_BOT
+    }
 
     if {[info exists ::env(BOTTOM_SITE)] && $::env(BOTTOM_SITE) ne ""} {
       set ::env(PLACE_SITE) $::env(BOTTOM_SITE)
     }
 
-    # NEW: lock the OTHER tier by master suffix "*_upper"
     if {$opt(-notouch)} {
-      set_dont_touch_by_ref_suffix "*_upper" \
-        -quiet $opt(-quiet)
+      set_dont_touch_by_ref_suffix "*_upper" -quiet $opt(-quiet)
     }
-
-    # puts "INFO: Tier policy applied for BOTTOM: dont_use(upper libs), dont_touch(upper insts), filler=BOTTOM."
   }
+
+  set allow_net [_normalize_allow_net_class $opt(-allow_net)]
+  if {$allow_net ne "all"} {
+    if {!$opt(-quiet)} {
+      puts "INFO: Apply allow_net=[_format_allow_net_class $allow_net] for tier=$tier"
+    }
+    _apply_net_class_optimization_mask $allow_net $opt(-quiet)
+  }
+
   puts "Rebuild Row for $tier"
   rebuild_rows_for_site $::env(PLACE_SITE) $tier
 }

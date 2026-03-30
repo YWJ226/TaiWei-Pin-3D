@@ -15,7 +15,15 @@ ifeq ($(USE_FLOW),openroad)
   export MAKE_TRACKS       ?= $(PLATFORM_DIR)/openRoad/make_tracks.2A6M7M.tcl
 endif
 export MIN_CLK_ROUTING_LAYER ?= M2
-export TECH_LEF  ?= $(PLATFORM_DIR)/lef/asap7_tech_1x_6M7M.lef
+# export CREATE_OBS_STAGE?="1"
+export OBS_TECH_LEF ?= $(PLATFORM_DIR)/lef/asap7_tech_1x_7MHBT7M.lef
+export DEFAULT_3D_TECH_LEF ?= $(PLATFORM_DIR)/lef/asap7_tech_1x_6M7M.lef
+ifneq ($(strip $(CREATE_OBS_STAGE)),)
+  export TECH_LEF  ?= $(OBS_TECH_LEF)
+else
+  export TECH_LEF  ?= $(DEFAULT_3D_TECH_LEF)
+endif
+# export DEFAULT_3D_TECH_LEF ?= $(PLATFORM_DIR)/lef/asap7_tech_1x_6M7M.lef
 export RCX_RULES         ?= $(PLATFORM_DIR)/asap7_tech_1x_6M7M.rcx_patterns.rules
 export SET_RC_TCL               ?= $(PLATFORM_DIR)/setRC_6M7M.tcl
 # export MAKE_TRACKS       ?= $(PLATFORM_DIR)/make_tracks_cds.tcl
@@ -86,6 +94,7 @@ export PLACE_SITE   = asap7sc7p5t
 # export IO_PLACER_V ?= M5
 export IO_PLACER_H ?= M4
 export IO_PLACER_V ?= M3
+export HBT_MAX_CORE_UTILIZATION ?= 0.8
 # PDN / Endcap / Welltie（3D 策略）
 export PDN_TCL      ?= $(PLATFORM_DIR)/openRoad/pdn/grid_strategy-M1-M2-M5-M6.tcl
 export TAPCELL_TCL  ?= $(PLATFORM_DIR)/tapcell.tcl

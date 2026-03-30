@@ -35,7 +35,7 @@ _common_setup
 
 defIn $DEF_IN
 
-apply_tier_policy bottom
+apply_tier_policy bottom -fixlib 1
 lassign [pmu::_get_halos] halo_x halo_y
 catch { pmu::run_tier_macro_place bottom $halo_x $halo_y }
 

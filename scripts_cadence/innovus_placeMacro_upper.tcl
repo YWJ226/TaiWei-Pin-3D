@@ -17,8 +17,8 @@ set RESULTS_DIR  [_get RESULTS_DIR]
 set REPORTS_DIR  [_get REPORTS_DIR]
 set OBJECTS_DIR  [_get OBJECTS_DIR]
 
-set DEF_IN [file join $RESULTS_DIR "2_4_floorplan_io.def"]
-set V_IN   [file join $RESULTS_DIR "2_4_floorplan_io.v"]
+set DEF_IN [file join $RESULTS_DIR "2_4_floorplan_split.def"]
+set V_IN   [file join $RESULTS_DIR "2_4_floorplan_split.v"]
 set sdc    [file join $RESULTS_DIR "1_synth.sdc"]
 
 source $::env(CADENCE_SCRIPTS_DIR)/mmmc_setup.tcl
@@ -35,7 +35,7 @@ _common_setup
 
 defIn $DEF_IN
 
-apply_tier_policy upper
+apply_tier_policy upper -fixlib 1
 lassign [pmu::_get_halos] halo_x halo_y
 catch { pmu::run_tier_macro_place upper $halo_x $halo_y }
 

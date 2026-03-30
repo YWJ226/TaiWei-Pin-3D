@@ -8,6 +8,7 @@ reports
 objects
 HotSpot/examples/3D_*
 HotSpot/scripts/output
+__pycache__
 *.log
 versions.txt
 .cadence
@@ -39,4 +40,4 @@ platforms/nangate45_asap7_3D
 platforms/process_scripts
 
 # temp cases
-
+work.codex/

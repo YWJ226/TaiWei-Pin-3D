@@ -331,9 +331,9 @@ END M10
 
 LAYER hb_layer
   TYPE CUT ;
-  SPACING 0.5 ;
-  WIDTH 0.5 ;
-  RESISTANCE 0.02 ;
+  SPACING 1.568 ;
+  WIDTH 0.032 ;
+  RESISTANCE 3 ;
 END hb_layer
 
 LAYER M6_m
@@ -890,50 +890,10 @@ VIA via9_0 DEFAULT
 END via9_0
 
 VIA hb_layer_0 DEFAULT
-  LAYER hb_layer ; RECT -0.25 -0.25 0.25 0.25 ;
+  LAYER hb_layer ; RECT -0.016 -0.016 0.016 0.016 ;
   LAYER M10 ; RECT -0.4 -0.4 0.4 0.4 ;
-  LAYER M6_m ; RECT -0.25 -0.25 0.25 0.25 ;
+  LAYER M6_m ; RECT -0.027 -0.016 0.027 0.016 ;
 END hb_layer_0
-VIA hb_layer_1 DEFAULT
-  LAYER hb_layer ; RECT -0.25 -0.25 0.25 0.25 ;
-  LAYER M10 ; RECT -0.8 -0.8 0.8 0.8 ;
-  LAYER M6_m ; RECT -0.25 -0.5 0.25 0.5 ;
-END hb_layer_1
-VIA hb_layer_2 DEFAULT
-  LAYER hb_layer ; RECT -0.25 -0.25 0.25 0.25 ;
-  LAYER M10 ; RECT -0.8 -0.8 0.8 0.8 ;
-  LAYER M6_m ; RECT -0.5 -0.25 0.5 0.25 ;
-END hb_layer_2
-VIA hb_layer_3 DEFAULT
-  LAYER hb_layer ; RECT -0.25 -0.25 0.25 0.25 ;
-  LAYER M10 ; RECT -0.4 -0.8 0.4 0.8 ;
-  LAYER M6_m ; RECT -0.5 -0.5 0.5 0.5 ;
-END hb_layer_3
-VIA hb_layer_4 DEFAULT
-  LAYER hb_layer ; RECT -0.25 -0.25 0.25 0.25 ;
-  LAYER M10 ; RECT -0.4 -0.8 0.4 0.8 ;
-  LAYER M6_m ; RECT -0.25 -0.5 0.25 0.5 ;
-END hb_layer_4
-VIA hb_layer_5 DEFAULT
-  LAYER hb_layer ; RECT -0.25 -0.25 0.25 0.25 ;
-  LAYER M10 ; RECT -0.4 -0.8 0.4 0.8 ;
-  LAYER M6_m ; RECT -0.5 -0.25 0.5 0.25 ;
-END hb_layer_5
-VIA hb_layer_6 DEFAULT
-  LAYER hb_layer ; RECT -0.25 -0.25 0.25 0.25 ;
-  LAYER M10 ; RECT -0.8 -0.4 0.8 0.4 ;
-  LAYER M6_m ; RECT -0.5 -0.5 0.5 0.5 ;
-END hb_layer_6
-VIA hb_layer_7 DEFAULT
-  LAYER hb_layer ; RECT -0.25 -0.25 0.25 0.25 ;
-  LAYER M10 ; RECT -0.8 -0.4 0.8 0.4 ;
-  LAYER M6_m ; RECT -0.25 -0.5 0.25 0.5 ;
-END hb_layer_7
-VIA hb_layer_8 DEFAULT
-  LAYER hb_layer ; RECT -0.25 -0.25 0.25 0.25 ;
-  LAYER M10 ; RECT -0.8 -0.4 0.8 0.4 ;
-  LAYER M6_m ; RECT -0.5 -0.25 0.5 0.25 ;
-END hb_layer_8
 
 VIA VIA12_m Default
   LAYER M1_m ; RECT -0.009 -0.011 0.009 0.011 ;
@@ -1024,8 +984,8 @@ VIARULE hb_layerArray-0 GENERATE
   LAYER M6_m ;
     ENCLOSURE 0 0 ;
   LAYER hb_layer ;
-    RECT -0.25 -0.25 0.25 0.25 ;
-    SPACING 1.05 BY 1.05 ;
+    RECT -0.016 -0.016 0.016 0.016 ;
+    SPACING 1.568 BY 1.568 ;
 END hb_layerArray-0
 
 VIARULE Via1Array-0 GENERATE
@@ -1238,6 +1198,7 @@ SPACING
   SAMENET via7 via7 0.44 ;
   SAMENET via8 via8 0.44 ;
   SAMENET via9 via9 0.88 ;
+  SAMENET hb_layer hb_layer 1.568 ;
   SAMENET via1 via2 0.0 STACK ;
   SAMENET via2 via3 0.0 STACK ;
   SAMENET via3 via4 0.0 STACK ;

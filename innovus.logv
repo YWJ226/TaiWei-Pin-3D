@@ -1,0 +1,76 @@
+[03/29 20:42:53      0s] 
+[03/29 20:42:53      0s] Cadence Innovus(TM) Implementation System.
+[03/29 20:42:53      0s] Copyright 2021 Cadence Design Systems, Inc. All rights reserved worldwide.
+[03/29 20:42:53      0s] 
+[03/29 20:42:53      0s] Version:	v21.39-s058_1, built Thu Apr 4 09:59:42 PDT 2024
+[03/29 20:42:53      0s] Options:	-nowin -overwrite 
+[03/29 20:42:53      0s] Date:		Sun Mar 29 20:42:53 2026
+[03/29 20:42:53      0s] Host:		hnode35 (x86_64 w/Linux 3.10.0-1160.el7.x86_64) (20cores*160cpus*Intel(R) Xeon(R) Gold 6230N CPU @ 2.30GHz 28160KB)
+[03/29 20:42:53      0s] OS:		CentOS Linux 7 (Core)
+[03/29 20:42:53      0s] 
+[03/29 20:42:53      0s] License:
+[03/29 20:42:53      0s] 		[20:42:53.071043] Configured Lic search path (21.01-s002): 5280@dellr910e:5280@dellr900g:5280@dell6850a
+
+[03/29 20:42:53      0s] 		invs	Innovus Implementation System	21.1	checkout succeeded
+[03/29 20:42:53      0s] 		8 CPU jobs allowed with the current license(s). Use setMultiCpuUsage to set your required CPU count.
+[03/29 20:43:12     20s] Reset Parastics called with the command setExtractRCMode -reset@(#)CDS: Innovus v21.39-s058_1 (64bit) 04/04/2024 09:59 (Linux 3.10.0-693.el7.x86_64)
+[03/29 20:43:15     23s] @(#)CDS: NanoRoute 21.39-s058_1 NR231113-0413/21_19-UB (database version 18.20.605_1) {superthreading v2.17}
+[03/29 20:43:15     23s] @(#)CDS: AAE 21.19-s004 (64bit) 04/04/2024 (Linux 3.10.0-693.el7.x86_64)
+[03/29 20:43:15     23s] @(#)CDS: CTE 21.19-s010_1 () Mar 27 2024 01:55:37 ( )
+[03/29 20:43:15     23s] @(#)CDS: SYNTECH 21.19-s002_1 () Sep  6 2023 22:17:00 ( )
+[03/29 20:43:15     23s] @(#)CDS: CPE v21.19-s026
+[03/29 20:43:15     23s] @(#)CDS: IQuantus/TQuantus 21.1.1-s966 (64bit) Wed Mar 8 10:22:20 PST 2023 (Linux 3.10.0-693.el7.x86_64)
+[03/29 20:43:15     23s] @(#)CDS: OA 22.60-p087 Thu Feb  9 09:35:26 2023
+[03/29 20:43:15     23s] @(#)CDS: SGN 20.10-d001 (01-Jun-2020) (64 bit executable, Qt5.9.0)
+[03/29 20:43:15     23s] @(#)CDS: RCDB 11.15.0
+[03/29 20:43:15     23s] @(#)CDS: STYLUS 21.12-s019_1 (12/20/2022 05:13 PST)
+[03/29 20:43:15     23s] @(#)CDS: SystemPlanner-21.18-10439 (21.18) (2023-03-01 15:40:03+0800)
+[03/29 20:43:15     23s] Create and set the environment variable TMPDIR to /tmp/innovus_temp_145976_hnode35_zhiyuzheng_qW0flD.
+
+[03/29 20:43:15     23s] Change the soft stacksize limit to 0.2%RAM (1030 mbytes). Set global soft_stack_size_limit to change the value.
+[03/29 20:43:17     25s] 
+[03/29 20:43:17     25s] **INFO:  MMMC transition support version v31-84 
+[03/29 20:43:17     25s] 
+[03/29 20:43:17     25s] <CMD> set_global _enable_mmmc_by_default_flow      $CTE::mmmc_default
+[03/29 20:43:17     25s] <CMD> suppressMessage ENCEXT-2799
+[03/29 20:43:18     25s] <CMD> getVersion
+[03/29 20:43:19     25s] [INFO] Loading PVS 24.12 fill procedures
+[03/29 20:43:19     25s] **WARN: Tk package not loaded. The PVS fill DRC monitor is disabled.
+[03/29 20:43:19     25s] <CMD> help setInstancePlacementStatus
+[03/29 20:43:19     25s] 
+[03/29 20:43:19     25s] Usage: setInstancePlacementStatus [-help]
+[03/29 20:43:19     25s]                                   -status {unplaced fixed placed cover softFixed}
+[03/29 20:43:19     25s]                                   {-allHardMacros | -allPtnBlks | -allBlackBoxes | -name <instName(s)>}
+[03/29 20:43:19     25s] 
+[03/29 20:43:19     25s] -help                   # Prints out the command usage
+[03/29 20:43:19     25s] -allBlackBoxes          # set all blackbox cells (bool, required)
+[03/29 20:43:19     25s] -allHardMacros          # set all hard macros (bool, required)
+[03/29 20:43:19     25s] -allPtnBlks             # set all partitions (bool, required)
+[03/29 20:43:19     25s] -name <instName(s)>     # inistances names (string, required)
+[03/29 20:43:19     25s] -status {unplaced fixed placed cover softFixed}
+[03/29 20:43:19     25s]                         # placement status to be set (enum, required)
+[03/29 20:43:19     25s] 
+[03/29 20:43:19     25s] 
+[03/29 20:43:19     25s] <CMD> help placeInstance
+[03/29 20:43:19     25s] 
+[03/29 20:43:19     25s] Usage: placeInstance [-help] <inst> <location>
+[03/29 20:43:19     25s]                      [{R0 R90 R180 R270 MX MX90 MY MY90}] [{ -fixed  | -placed  | -softFixed  }]
+[03/29 20:43:19     25s] 
+[03/29 20:43:19     25s] -help                                  # Prints out the command usage
+[03/29 20:43:19     25s] <inst>                                 # instance name ((inst), required)
+[03/29 20:43:19     25s] <location>                             # coordinate of new origin
+[03/29 20:43:19     25s]                                        # (point, required)
+[03/29 20:43:19     25s] {R0 R90 R180 R270 MX MX90 MY MY90}     # new orientation (enum, optional)
+[03/29 20:43:19     25s] -fixed                                 # mark instance as fixed
+[03/29 20:43:19     25s]                                        # (bool, optional)
+[03/29 20:43:19     25s] -placed                                # mark instance as placed
+[03/29 20:43:19     25s]                                        # (bool, optional)
+[03/29 20:43:19     25s] -softFixed                             # mark instance as softFixed
+[03/29 20:43:19     25s]                                        # (bool, optional)
+[03/29 20:43:19     25s] 
+[03/29 20:43:19     25s] 
+[03/29 20:43:19     25s] 
+[03/29 20:43:19     25s] *** Memory Usage v#1 (Current mem = 950.328M, initial mem = 478.133M) ***
+[03/29 20:43:19     25s] *** Message Summary: 0 warning(s), 0 error(s)
+[03/29 20:43:19     25s] 
+[03/29 20:43:19     25s] --- Ending "Innovus" (totcpu=0:00:26.0, real=0:00:26.0, mem=950.3M) ---

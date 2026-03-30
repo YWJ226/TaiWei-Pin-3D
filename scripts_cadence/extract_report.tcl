@@ -82,56 +82,144 @@ proc extract_wire_length {} {
 }
 
 # --------------------------
-# Cross Tier Net Count (Fixed IO Check)
+# Cross-tier reporting helpers
 # --------------------------
-proc extract_cross_tier_nets {list_rpt_path} {
-  set cut_layer "hb_layer"
+proc _report_net_tier_presence {net_ptr} {
+  lassign [tier_net_presence_counts $net_ptr] upper_count bottom_count unknown_count
+  return [list [expr {$upper_count > 0}] [expr {$bottom_count > 0}] [expr {$unknown_count > 0}]]
+}
+
+proc _report_clock_names {} {
+  global extract_report_clock_names_cache
+  if {[info exists extract_report_clock_names_cache]} {
+    return $extract_report_clock_names_cache
+  }
+  set names {}
+  if {![catch {set names [get_object_name [all_clocks]]} err]} {
+    set extract_report_clock_names_cache [lsort -unique $names]
+    return $extract_report_clock_names_cache
+  }
+  set extract_report_clock_names_cache {}
+  return {}
+}
+
+proc _report_is_clock_pin_name {pin_name} {
+  set short_name $pin_name
+  if {[string first "/" $pin_name] >= 0} {
+    set short_name [lindex [split $pin_name "/"] end]
+  }
+
+  foreach pattern {CLK CK CLKB CKB CLKN CKN CP GCLK SCLK} {
+    if {[string match "${pattern}*" $short_name]} {
+      return 1
+    }
+  }
+  return 0
+}
+
+proc _report_is_clock_inst_term {inst_term} {
+  if {![catch {set inst_term_name [dbGet $inst_term.name]}]} {
+    if {[_report_is_clock_pin_name $inst_term_name]} {
+      return 1
+    }
+  }
+  return 0
+}
+
+proc _report_is_clock_net_ptr {net_ptr} {
+  set net_name [dbGet $net_ptr.name]
+  if {$net_name ne ""} {
+    foreach clock_name [_report_clock_names] {
+      if {$clock_name eq $net_name} {
+        return 1
+      }
+    }
+  }
+
+  foreach inst_term [dbGet -e $net_ptr.instTerms] {
+    if {[_report_is_clock_inst_term $inst_term]} {
+      return 1
+    }
+  }
+
+  foreach term [dbGet -e $net_ptr.terms] {
+    set term_name [dbGet $term.name]
+    if {$term_name eq ""} {
+      continue
+    }
+    foreach clock_name [_report_clock_names] {
+      if {$clock_name eq $term_name} {
+        return 1
+      }
+    }
+  }
+
+  return 0
+}
+
+# --------------------------
+# Cross Tier Net Count
+# Rule:
+#   - A net is cross-tier if it connects:
+#       1) at least one upper-tier instance and one bottom-tier instance
+#       2) at least one upper-tier object and one bottom-tier object
+# Options:
+#   -clock_only 1 : report only clock-related cross-tier nets
+# --------------------------
+proc extract_cross_tier_nets {list_rpt_path args} {
+  array set opt {
+    -clock_only 0
+  }
+  if {([llength $args] % 2) != 0} {
+    error "extract_cross_tier_nets: args must be key-value pairs, got: $args"
+  }
+  foreach {k v} $args {
+    if {![info exists opt($k)]} {
+      error "extract_cross_tier_nets: unknown option $k"
+    }
+    set opt($k) $v
+  }
+
   set count 0
-  
+
   set report_lines [list]
-  lappend report_lines "# Cross-Tier Net Report"
+  if {$opt(-clock_only)} {
+    lappend report_lines "# Clock-Only Cross-Tier Net Report"
+  } else {
+    lappend report_lines "# Cross-Tier Net Report"
+  }
   lappend report_lines [format "%-40s | %s" "Net Name" "Type"]
-  lappend report_lines "-----------------------------------------|--------------"
+  lappend report_lines "-----------------------------------------|------------------"
 
-  # --- 1. Iterate signal nets ---
   foreach net [dbGet top.nets] {
-    # Check whether HB-layer vias exist
-    # Note: dbGet here returns a pointer list or 0x0
-    set vias [dbGet $net.vias.via.cutLayer.name $cut_layer -e]
-    
-    # Must check 0x0 first, then length
-    if {$vias ne "0x0" && $vias ne "" && [llength $vias] > 0} {
+    if {$opt(-clock_only) && ![_report_is_clock_net_ptr $net]} {
+      continue
+    }
+
+    lassign [_report_net_tier_presence $net] has_upper has_bottom has_unknown
+
+    set net_type ""
+    if {$has_upper && $has_bottom} {
+      set net_type "Upper_Bottom"
+    } elseif {$has_unknown} {
+      set net_type "Unknown_Tier"
+    }
+
+    if {$net_type ne ""} {
+      if {$net_type eq "Upper_Bottom"} {
         incr count
-        set net_name [dbGet $net.name]
-        
-        # --- Core fix: accurately detect IO connectivity ---
-        set terms [dbGet $net.terms]
-        
-        # Treat as IO-connected only when terms is neither 0x0 nor empty
-        if {$terms ne "0x0" && $terms ne ""} {
-            lappend report_lines [format "%-40s | %s" $net_name "IO_Connected"]
-        } else {
-            lappend report_lines [format "%-40s | %s" $net_name "Internal"]
-        }
+      }
+      lappend report_lines [format "%-40s | %s" [dbGet $net.name] $net_type]
     }
   }
 
-  # --- 2. Iterate PG nets ---
-  foreach net [dbGet top.pgNets] {
-    set vias [dbGet $net.vias.via.cutLayer.name $cut_layer -e]
-    if {$vias ne "0x0" && $vias ne "" && [llength $vias] > 0} {
-        incr count
-        set net_name [dbGet $net.name]
-        lappend report_lines [format "%-40s | %s" $net_name "PG_Power_Ground"]
-    }
-  }
-
-  # 3. Write report
   if {$list_rpt_path ne ""} {
-      set fh [open $list_rpt_path w]
-      foreach line $report_lines { puts $fh $line }
-      puts $fh "Total Unique Nets: $count"
-      close $fh
+    set fh [open $list_rpt_path w]
+    foreach line $report_lines {
+      puts $fh $line
+    }
+    puts $fh "Total Cross-Tier Nets: $count"
+    close $fh
   }
 
   return $count
@@ -424,3 +512,5 @@ proc extract_report {args} {
   }
   return $csv_line
 }
+# Shared tier classification
+source $::env(CADENCE_SCRIPTS_DIR)/tier_classification.tcl

@@ -15,7 +15,14 @@ ifeq ($(USE_FLOW),openroad)
   export MAKE_TRACKS ?= $(PLATFORM_DIR)/make_tracks.tech21.tcl
 endif
 export MIN_CLK_ROUTING_LAYER ?= M2
-export TECH_LEF ?= $(PLATFORM_DIR)/lef/NangateOpenCellLibrary.tech.lef
+# export CREATE_OBS_STAGE?="1"
+export OBS_TECH_LEF  ?= $(PLATFORM_DIR)/lef/NangateOpenCellLibrary.M10HBTM10.lef
+export DEFAULT_3D_TECH_LEF ?= $(PLATFORM_DIR)/lef/NangateOpenCellLibrary.tech.lef
+ifneq ($(strip $(CREATE_OBS_STAGE)),)
+  export TECH_LEF  ?= $(OBS_TECH_LEF)
+else
+  export TECH_LEF  ?= $(DEFAULT_3D_TECH_LEF)
+endif
 export RCX_RULES         ?= $(PLATFORM_DIR)/NangateOpenCellLibrary.tech.rcx_patterns.rules
 export SET_RC_TCL  ?= $(PLATFORM_DIR)/setRC.tech.tcl
 
@@ -68,6 +75,7 @@ export ABC_LOAD_IN_FF    = 3.898
 export PLACE_SITE   = FreePDK45_38x28_10R_NP_162NW_34O
 export IO_PLACER_H ?= M5
 export IO_PLACER_V ?= M6
+export HBT_MAX_CORE_UTILIZATION ?= 0.8
 export MAKE_TRACKS ?= $(PLATFORM_DIR)/make_tracks.tcl
 # PDN / Endcap / Welltie (based on Cadence)
 export PDN_TCL      ?= $(PLATFORM_DIR)/grid_strategy-M1-M4-M7.tcl
@@ -115,4 +123,3 @@ export RCX_RULES          = $(PLATFORM_DIR)/NangateOpenCellLibrary.tech21.rcx_pa
 export PWR_NETS_VOLTAGES ?= "VDD 1.1"
 export GND_NETS_VOLTAGES ?= "VSS 0.0"
 export IR_DROP_LAYER     ?= M1
-
