@@ -45,7 +45,10 @@ puts "INFO: \[pdn_3d_stacked\] === Part 1: BOT tier PDN (BOT_VDD / BOT_VSS) ==="
 set minCh 2
 
 # 1) Unplace core cells and cut rows (kept from your original flow)
-dbset [dbget top.insts.cell.subClass core -p2].pStatus unplaced
+set core_insts [dbGet top.insts.cell.subClass core -p2]
+if {[llength $core_insts] > 0} {
+  dbSet $core_insts.pStatus unplaced
+}
 finishFloorplan -fillPlaceBlockage hard $minCh
 cutRow
 finishFloorplan -fillPlaceBlockage hard $minCh

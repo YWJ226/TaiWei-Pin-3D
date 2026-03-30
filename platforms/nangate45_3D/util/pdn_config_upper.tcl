@@ -36,7 +36,10 @@ proc get_upper_tier_insts {} {
 # Common PDN floorplan prep
 # --------------------------
 proc prepare_pdn_floorplan {min_ch} {
-  dbSet [dbGet top.insts.cell.subClass core -p2].pStatus unplaced
+  set core_insts [dbGet top.insts.cell.subClass core -p2]
+  if {[llength $core_insts] > 0} {
+    dbSet $core_insts.pStatus unplaced
+  }
   finishFloorplan -fillPlaceBlockage hard $min_ch
   cutRow
   finishFloorplan -fillPlaceBlockage hard $min_ch

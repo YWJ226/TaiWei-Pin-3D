@@ -1,80 +1,17 @@
 #!/usr/bin/env python3
 import argparse
+import json
 import os
-import signal
 import socket
 import subprocess
 import sys
-from concurrent.futures import ProcessPoolExecutor, as_completed
-from dataclasses import dataclass
+import time
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, ThreadPoolExecutor, wait
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
-# ==============================================================================
-# Safety: signals + process-group kill
-# ==============================================================================
-
-
-def _install_signal_handlers():
-    """Install signal handlers so that SIGINT/SIGTERM raise KeyboardInterrupt."""
-
-    def _handler(signum, frame):
-        raise KeyboardInterrupt()
-
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        try:
-            signal.signal(sig, _handler)
-        except Exception:
-            pass
-
-
-def _run_command_with_log(
-    cmd: Sequence[str],
-    log_path: Path,
-    cwd: Optional[Path] = None,
-    env: Optional[dict] = None,
-):
-    """
-    Run a command, redirect stdout/stderr to log_path.
-    Start a new process group so we can kill the whole tree via killpg on interrupt.
-    """
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-
-    # 兼容性处理：Windows/非POSIX环境没有 os.setsid
-    preexec = getattr(os, "setsid", None)
-
-    with open(log_path, "w") as log_file:
-        proc = subprocess.Popen(
-            list(cmd),
-            stdout=log_file,
-            stderr=subprocess.STDOUT,
-            cwd=str(cwd) if cwd else None,
-            preexec_fn=preexec,
-            env=env,
-        )
-
-        try:
-            ret = proc.wait()
-            if ret != 0:
-                raise subprocess.CalledProcessError(ret, list(cmd))
-        except KeyboardInterrupt:
-            try:
-                if preexec and hasattr(os, "killpg"):
-                    os.killpg(proc.pid, signal.SIGTERM)
-                else:
-                    proc.terminate()
-            except Exception:
-                pass
-            raise
-        except Exception:
-            try:
-                if preexec and hasattr(os, "killpg"):
-                    os.killpg(proc.pid, signal.SIGTERM)
-                else:
-                    proc.terminate()
-            except Exception:
-                pass
-            raise
+import run_experiments_remote as remote
 
 
 # ==============================================================================
@@ -90,7 +27,8 @@ class RunConfig:
     repo_root: Path  # local repo root (where test/ exists)
     do_run: bool
     do_eval: bool
-
+    host: Optional[str] = None
+    host_slot: int = 0
 
 def _log_paths(flow: str, tech: str, case: str) -> Tuple[Path, Path]:
     base = Path(f"run_logs/{tech}/{flow}")
@@ -99,11 +37,41 @@ def _log_paths(flow: str, tech: str, case: str) -> Tuple[Path, Path]:
     return run_log, eval_log
 
 
+def _status_dir(repo_root: Path) -> Path:
+    return repo_root / "run_logs" / "status"
+
+
+def _status_path(cfg: RunConfig) -> Path:
+    return _status_dir(cfg.repo_root) / f"{cfg.flow}__{cfg.tech}__{cfg.case}.json"
+
+
+def _dispatch_dir(cfg: RunConfig) -> Path:
+    return cfg.repo_root / "run_logs" / "dispatch" / cfg.flow / cfg.tech / cfg.case
+
+
 def _script_paths(repo_root: Path, flow: str, tech: str,
                   case: str) -> Tuple[Path, Path]:
     run_script = repo_root / "test" / tech / case / flow / "run.sh"
     eval_script = repo_root / "test" / tech / case / flow / "eval.sh"
     return run_script, eval_script
+
+
+def discover_available_tasks(repo_root: Path) -> List[Tuple[str, str, str]]:
+    test_root = repo_root / "test"
+    if not test_root.exists():
+        return []
+
+    found = set()
+    for run_script in sorted(test_root.glob("*/*/*/run.sh")):
+        rel = run_script.relative_to(test_root)
+        if len(rel.parts) != 4:
+            continue
+        tech, case, flow, _ = rel.parts
+        if flow not in ("ord", "cds"):
+            continue
+        found.add((flow, tech, case))
+
+    return sorted(found, key=lambda item: (item[0], item[1], item[2]))
 
 
 def _load_env_from_script(env_script: Path) -> None:
@@ -125,17 +93,158 @@ def _load_env_from_script(env_script: Path) -> None:
         os.environ[key.decode(errors="ignore")] = value.decode(errors="ignore")
 
 
+def parse_host_list(values: Sequence[str]) -> List[str]:
+    if not values:
+        return []
+
+    text = " ".join(values).strip()
+    if text.startswith("{") and text.endswith("}"):
+        text = text[1:-1]
+    text = text.replace(",", " ")
+    return _dedup_keep_order([item.strip() for item in text.split() if item.strip()])
+
+
+def _target_label(cfg: RunConfig, local_host: Optional[str] = None) -> str:
+    if cfg.host:
+        if cfg.host_slot > 0:
+            return f"{cfg.host}[{cfg.host_slot}]"
+        return cfg.host
+    return local_host if local_host else "localhost"
+
+
+def write_task_status(
+    cfg: RunConfig,
+    status: str,
+    phase: str,
+    message: str = "",
+    pid: Optional[int] = None,
+    local_host: Optional[str] = None,
+) -> None:
+    status_path = _status_path(cfg)
+    status_path.parent.mkdir(parents=True, exist_ok=True)
+    run_log, eval_log = _log_paths(cfg.flow, cfg.tech, cfg.case)
+    payload = {
+        "flow": cfg.flow,
+        "tech": cfg.tech,
+        "case": cfg.case,
+        "target_host": _target_label(cfg, local_host),
+        "pwd": str(cfg.repo_root),
+        "launcher_pwd": os.getcwd(),
+        "status": status,
+        "phase": phase,
+        "message": message,
+        "pid": pid,
+        "updated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "run_log": str(run_log),
+        "eval_log": str(eval_log),
+    }
+    tmp_path = status_path.with_suffix(".json.tmp")
+    with open(tmp_path, "w") as fh:
+        json.dump(payload, fh, indent=2, sort_keys=True)
+    os.replace(tmp_path, status_path)
+
+
+def read_task_status(cfg: RunConfig) -> Dict[str, object]:
+    status_path = _status_path(cfg)
+    if not status_path.exists():
+        return {
+            "flow": cfg.flow,
+            "tech": cfg.tech,
+            "case": cfg.case,
+            "target_host": _target_label(cfg),
+            "status": "unknown",
+            "phase": "unknown",
+            "message": "",
+        }
+    with open(status_path, "r") as fh:
+        return json.load(fh)
+
+
+def init_task_statuses(tasks: Sequence[RunConfig]) -> None:
+    for task in tasks:
+        write_task_status(task, "queued", "queued")
+
+
+def mark_interrupted_tasks(tasks: Sequence[RunConfig]) -> None:
+    for task in tasks:
+        payload = read_task_status(task)
+        status = str(payload.get("status", "unknown"))
+        if status in ("ok", "failed"):
+            continue
+        phase = str(payload.get("phase", "unknown"))
+        write_task_status(
+            task,
+            status="failed",
+            phase=phase,
+            message="[MAIN] interrupted and terminated by launcher",
+        )
+
+
+def print_status_summary(tasks: Sequence[RunConfig]) -> None:
+    counts: Dict[str, int] = {}
+    active = []
+    for task in tasks:
+        payload = read_task_status(task)
+        status = str(payload.get("status", "unknown"))
+        counts[status] = counts.get(status, 0) + 1
+        if status == "running":
+            active.append(payload)
+
+    ordered = []
+    for key in ("queued", "running", "ok", "failed", "unknown"):
+        if counts.get(key):
+            ordered.append(f"{key}={counts[key]}")
+    print(f"[STATUS] {' '.join(ordered)}")
+    for payload in active[:12]:
+        print(
+            "[STATUS] "
+            f"{payload.get('target_host')} "
+            f"{payload.get('flow')}/{payload.get('tech')}/{payload.get('case')} "
+            f"phase={payload.get('phase')} "
+            f"updated_at={payload.get('updated_at')}"
+        )
+
+
+def _run_task_script(
+    cfg: RunConfig,
+    script_path: Path,
+    log_path: Path,
+):
+    if cfg.host:
+        remote.run_remote_task(
+            repo_root=cfg.repo_root,
+            host=cfg.host,
+            dispatch_dir=_dispatch_dir(cfg),
+            script_path=script_path,
+            log_path=log_path,
+        )
+        return
+
+    remote.run_command_with_log(
+        ["bash", str(script_path)],
+        log_path,
+        cwd=cfg.repo_root,
+        env=os.environ.copy(),
+    )
+
+
 def run_one(cfg: RunConfig) -> str:
     """
     Execute one (flow, tech, case) task.
     - cds: run.sh + eval.sh locally
     - ord: run.sh + eval.sh locally
     """
-    _install_signal_handlers()
+    remote.install_signal_handlers()
     _load_env_from_script(cfg.repo_root / "env.sh")
 
     pid = os.getpid()
-    host = socket.gethostname()
+    local_host = socket.gethostname()
+    exec_host = _target_label(cfg, local_host)
+    write_task_status(cfg,
+                      status="running",
+                      phase="starting",
+                      pid=pid,
+                      local_host=local_host)
 
     run_log, eval_log = _log_paths(cfg.flow, cfg.tech, cfg.case)
     # 兼容 Python 3.6: unlink(missing_ok=True) 改为 try-except
@@ -159,70 +268,125 @@ def run_one(cfg: RunConfig) -> str:
     elif cfg.do_eval and not cfg.do_run:
         mode = "eval-only"
     print(
-        f"[{pid}] Start {cfg.flow.upper()} tech={cfg.tech} case={cfg.case} mode={mode} on host={host}"
+        f"[{pid}] Start {cfg.flow.upper()} tech={cfg.tech} case={cfg.case} mode={mode} on host={exec_host}"
     )
 
     # --- run.sh (local) ---
     if cfg.do_run:
         if not run_script.exists():
             msg = f"[{pid}] ERROR: run.sh not found: {run_script}"
+            write_task_status(cfg,
+                              status="failed",
+                              phase="run",
+                              message=msg,
+                              pid=pid,
+                              local_host=local_host)
             print(msg)
             return msg
 
         try:
-            _run_command_with_log(
-                ["bash", str(run_script)],
-                run_log,
-                cwd=cfg.repo_root,
-                env=os.environ.copy(),
-            )
+            write_task_status(cfg,
+                              status="running",
+                              phase="run",
+                              pid=pid,
+                              local_host=local_host)
+            _run_task_script(cfg, run_script, run_log)
         except subprocess.CalledProcessError:
-            msg = f"[{pid}] ERROR: run.sh failed ({cfg.flow}/{cfg.tech}/{cfg.case}). See {run_log}"
+            msg = f"[{pid}] ERROR: run.sh failed ({cfg.flow}/{cfg.tech}/{cfg.case}) on host={exec_host}. See {run_log}"
+            write_task_status(cfg,
+                              status="failed",
+                              phase="run",
+                              message=msg,
+                              pid=pid,
+                              local_host=local_host)
             print(msg)
             return msg
 
     # --- eval.sh ---
     if not cfg.do_eval:
         ok = f"[{pid}] OK: {cfg.flow}/{cfg.tech}/{cfg.case}"
+        write_task_status(cfg,
+                          status="ok",
+                          phase="done",
+                          message=ok,
+                          pid=pid,
+                          local_host=local_host)
         print(ok)
         return ok
     if cfg.flow == "cds":
         if not eval_script.exists():
             msg = f"[{pid}] ERROR: eval.sh not found: {eval_script}"
+            write_task_status(cfg,
+                              status="failed",
+                              phase="eval",
+                              message=msg,
+                              pid=pid,
+                              local_host=local_host)
             print(msg)
             return msg
         try:
-            _run_command_with_log(
-                ["bash", str(eval_script)],
-                eval_log,
-                cwd=cfg.repo_root,
-                env=os.environ.copy(),
-            )
+            write_task_status(cfg,
+                              status="running",
+                              phase="eval",
+                              pid=pid,
+                              local_host=local_host)
+            _run_task_script(cfg, eval_script, eval_log)
         except subprocess.CalledProcessError:
-            msg = f"[{pid}] ERROR: eval.sh failed ({cfg.flow}/{cfg.tech}/{cfg.case}). See {eval_log}"
+            msg = f"[{pid}] ERROR: eval.sh failed ({cfg.flow}/{cfg.tech}/{cfg.case}) on host={exec_host}. See {eval_log}"
+            write_task_status(cfg,
+                              status="failed",
+                              phase="eval",
+                              message=msg,
+                              pid=pid,
+                              local_host=local_host)
             print(msg)
             return msg
 
     elif cfg.flow == "ord":
         if not eval_script.exists():
             msg = f"[{pid}] ERROR: eval.sh not found: {eval_script}"
+            write_task_status(cfg,
+                              status="failed",
+                              phase="eval",
+                              message=msg,
+                              pid=pid,
+                              local_host=local_host)
             print(msg)
             return msg
         try:
-            _run_command_with_log(
-                ["bash", str(eval_script)],
-                eval_log,
-                cwd=cfg.repo_root,
-                env=os.environ.copy(),
-            )
+            write_task_status(cfg,
+                              status="running",
+                              phase="eval",
+                              pid=pid,
+                              local_host=local_host)
+            _run_task_script(cfg, eval_script, eval_log)
         except subprocess.CalledProcessError:
-            msg = f"[{pid}] ERROR: eval.sh failed ({cfg.flow}/{cfg.tech}/{cfg.case}). See {eval_log}"
+            msg = f"[{pid}] ERROR: eval.sh failed ({cfg.flow}/{cfg.tech}/{cfg.case}) on host={exec_host}. See {eval_log}"
+            write_task_status(cfg,
+                              status="failed",
+                              phase="eval",
+                              message=msg,
+                              pid=pid,
+                              local_host=local_host)
             print(msg)
             return msg
     else:
-        return f"[{pid}] ERROR: unknown flow={cfg.flow}"
+        msg = f"[{pid}] ERROR: unknown flow={cfg.flow}"
+        write_task_status(cfg,
+                          status="failed",
+                          phase="eval",
+                          message=msg,
+                          pid=pid,
+                          local_host=local_host)
+        return msg
 
-    ok = f"[{pid}] OK: {cfg.flow}/{cfg.tech}/{cfg.case}"
+    ok = f"[{pid}] OK: {cfg.flow}/{cfg.tech}/{cfg.case} host={exec_host}"
+    write_task_status(cfg,
+                      status="ok",
+                      phase="done",
+                      message=ok,
+                      pid=pid,
+                      local_host=local_host)
     print(ok)
     return ok
 
@@ -250,20 +414,68 @@ def build_tasks(
     do_run: bool,
     do_eval: bool,
 ) -> List[RunConfig]:
+    flow_set = set(flows)
+    tech_set = set(techs)
+    case_set = set(cases)
     tasks: List[RunConfig] = []
-    for flow in flows:
-        for tech in techs:
-            for case in cases:
-                tasks.append(
-                    RunConfig(
-                        flow=flow,
-                        tech=tech,
-                        case=case,
-                        repo_root=repo_root,
-                        do_run=do_run,
-                        do_eval=do_eval,
-                    ))
+    for flow, tech, case in discover_available_tasks(repo_root):
+        if flow not in flow_set or tech not in tech_set or case not in case_set:
+            continue
+
+        run_script, eval_script = _script_paths(repo_root, flow, tech, case)
+        if do_run and not run_script.exists():
+            continue
+        if do_eval and not eval_script.exists():
+            continue
+
+        tasks.append(
+            RunConfig(
+                flow=flow,
+                tech=tech,
+                case=case,
+                repo_root=repo_root,
+                do_run=do_run,
+                do_eval=do_eval,
+            ))
     return tasks
+
+
+def shard_tasks(tasks: Sequence[RunConfig], num_shards: int,
+                shard_index: int) -> List[RunConfig]:
+    if num_shards <= 1:
+        return list(tasks)
+    return [task for idx, task in enumerate(tasks) if idx % num_shards == shard_index]
+
+
+def assign_hosts(tasks: Sequence[RunConfig], hosts: Sequence[str],
+                 max_jobs_per_host: int) -> List[RunConfig]:
+    if not hosts:
+        return list(tasks)
+    slots = [(host, slot) for host in hosts for slot in range(max_jobs_per_host)]
+    out: List[RunConfig] = []
+    for idx, task in enumerate(tasks):
+        host, host_slot = slots[idx % len(slots)]
+        out.append(replace(task, host=host, host_slot=host_slot))
+    return out
+
+
+def build_host_batches(
+    tasks: Sequence[RunConfig], ) -> List[Tuple[str, int, List[RunConfig]]]:
+    batches = {}
+    for task in tasks:
+        host = task.host
+        if not host:
+            continue
+        batches.setdefault((host, task.host_slot), []).append(task)
+    return [(host, slot, batches[(host, slot)]) for host, slot in batches]
+
+
+def run_host_batch(host: str, host_slot: int,
+                   tasks: Sequence[RunConfig]) -> List[str]:
+    results = []
+    for task in tasks:
+        results.append(run_one(task))
+    return results
 
 
 def parse_args(default_repo_root: Optional[str], ) -> argparse.Namespace:
@@ -292,7 +504,44 @@ def parse_args(default_repo_root: Optional[str], ) -> argparse.Namespace:
         "--jobs",
         type=int,
         default=9,
-        help="Parallel workers.",
+        help="Parallel workers for local mode.",
+    )
+    p.add_argument(
+        "--host-list",
+        "--host_list",
+        dest="host_list",
+        nargs="+",
+        default=None,
+        help="Dispatch tasks over SSH using an inline host list only.",
+    )
+    p.add_argument(
+        "--max-jobs-per-host",
+        type=int,
+        default=1,
+        help="Maximum concurrent task queues per host in --host-list mode.",
+    )
+    p.add_argument(
+        "--status-interval",
+        type=int,
+        default=30,
+        help="Seconds between status summary prints.",
+    )
+    p.add_argument(
+        "--list",
+        action="store_true",
+        help="List matched tasks and exit.",
+    )
+    p.add_argument(
+        "--num-shards",
+        type=int,
+        default=1,
+        help="Split matched tasks into N deterministic shards.",
+    )
+    p.add_argument(
+        "--shard-index",
+        type=int,
+        default=0,
+        help="0-based shard index to run.",
     )
     stage_group = p.add_mutually_exclusive_group()
     stage_group.add_argument(
@@ -315,7 +564,7 @@ def parse_args(default_repo_root: Optional[str], ) -> argparse.Namespace:
 
 
 def main() -> int:
-    _install_signal_handlers()
+    remote.install_signal_handlers()
     script_root = Path(__file__).resolve().parent
     _load_env_from_script(script_root / "env.sh")
 
@@ -325,9 +574,28 @@ def main() -> int:
     repo_root = Path(args.repo_root).resolve() if args.repo_root else Path(
         __file__).resolve().parent
 
-    # Default suites (match your originals)
-    default_techs = ["asap7_3D", "nangate45_3D", "asap7_nangate45_3D"]
-    default_cases = ["gcd", "aes", "jpeg", "ibex"]
+    if args.num_shards < 1:
+        print("[MAIN] ERROR: --num-shards must be >= 1", file=sys.stderr)
+        return 2
+    if args.max_jobs_per_host < 1:
+        print("[MAIN] ERROR: --max-jobs-per-host must be >= 1", file=sys.stderr)
+        return 2
+    if args.status_interval < 1:
+        print("[MAIN] ERROR: --status-interval must be >= 1", file=sys.stderr)
+        return 2
+    if args.shard_index < 0 or args.shard_index >= args.num_shards:
+        print("[MAIN] ERROR: --shard-index must satisfy 0 <= shard-index < num-shards",
+              file=sys.stderr)
+        return 2
+
+    available = discover_available_tasks(repo_root)
+    if not available:
+        print(f"[MAIN] ERROR: no runnable tasks found under {repo_root / 'test'}",
+              file=sys.stderr)
+        return 2
+
+    default_techs = _dedup_keep_order([tech for _, tech, _ in available])
+    default_cases = _dedup_keep_order([case for _, _, case in available])
 
     techs = _dedup_keep_order(args.tech) if args.tech else default_techs
     cases = _dedup_keep_order(args.case) if args.case else default_cases
@@ -348,29 +616,115 @@ def main() -> int:
         do_run=do_run,
         do_eval=do_eval,
     )
+    tasks = shard_tasks(tasks, args.num_shards, args.shard_index)
+
+    hosts: List[str] = []
+    if args.host_list:
+        hosts = parse_host_list(args.host_list)
+        if not hosts:
+            print("[MAIN] ERROR: no hosts parsed from --host-list",
+                  file=sys.stderr)
+            return 2
+        tasks = assign_hosts(tasks, hosts, args.max_jobs_per_host)
 
     print(f"[MAIN] repo_root={repo_root}")
     print(f"[MAIN] flows={flows} techs={techs} cases={cases} jobs={args.jobs}")
     print(f"[MAIN] stages: run={do_run} eval={do_eval}")
+    print(f"[MAIN] shard={args.shard_index}/{args.num_shards}")
+    if hosts:
+        print(
+            f"[MAIN] host_dispatch=ssh host_count={len(hosts)} max_jobs_per_host={args.max_jobs_per_host}"
+        )
     print(
         f"[MAIN] total_tasks={len(tasks)} logs under run_logs/<tech>/<flow>/..."
     )
 
+    if args.list:
+        for idx, task in enumerate(tasks):
+            if task.host:
+                print(
+                    f"{idx:03d} {_target_label(task)} {task.flow} {task.tech} {task.case}"
+                )
+            else:
+                print(f"{idx:03d} {task.flow} {task.tech} {task.case}")
+        return 0
+
+    if not tasks:
+        print("[MAIN] No tasks matched the requested filters.")
+        return 0
+
+    init_task_statuses(tasks)
+    print(f"[MAIN] live status files under {_status_dir(repo_root)}")
+
     # Run
-    executor: Optional[ProcessPoolExecutor] = None
-    try:
-        with ProcessPoolExecutor(max_workers=args.jobs) as executor:
+    if hosts:
+        executor: Optional[ThreadPoolExecutor] = None
+        fast_shutdown = False
+        host_batches = build_host_batches(tasks)
+        try:
+            executor = ThreadPoolExecutor(max_workers=len(host_batches))
+            futures = [
+                executor.submit(run_host_batch, host, host_slot, batch)
+                for host, host_slot, batch in host_batches
+            ]
+            pending = set(futures)
+            while pending:
+                done, pending = wait(pending,
+                                     timeout=args.status_interval,
+                                     return_when=FIRST_COMPLETED)
+                print_status_summary(tasks)
+                for fut in done:
+                    _ = fut.result()
+        except KeyboardInterrupt:
+            print("[MAIN] KeyboardInterrupt received, shutting down...")
+            remote.terminate_active_procs()
+            mark_interrupted_tasks(tasks)
+            fast_shutdown = True
+            if executor is not None:
+                try:
+                    executor.shutdown(wait=False, cancel_futures=True)
+                except Exception:
+                    pass
+            return 130
+        finally:
+            if executor is not None:
+                try:
+                    executor.shutdown(wait=not fast_shutdown,
+                                      cancel_futures=fast_shutdown)
+                except Exception:
+                    pass
+    else:
+        executor: Optional[ProcessPoolExecutor] = None
+        fast_shutdown = False
+        try:
+            executor = ProcessPoolExecutor(max_workers=args.jobs)
             futures = [executor.submit(run_one, t) for t in tasks]
-            for fut in as_completed(futures):
-                _ = fut.result()
-    except KeyboardInterrupt:
-        print("[MAIN] KeyboardInterrupt received, shutting down...")
-        if executor is not None:
-            try:
-                executor.shutdown(wait=False, cancel_futures=True)
-            except Exception:
-                pass
-        return 130
+            pending = set(futures)
+            while pending:
+                done, pending = wait(pending,
+                                     timeout=args.status_interval,
+                                     return_when=FIRST_COMPLETED)
+                print_status_summary(tasks)
+                for fut in done:
+                    _ = fut.result()
+        except KeyboardInterrupt:
+            print("[MAIN] KeyboardInterrupt received, shutting down...")
+            remote.terminate_active_procs()
+            mark_interrupted_tasks(tasks)
+            fast_shutdown = True
+            if executor is not None:
+                try:
+                    executor.shutdown(wait=False, cancel_futures=True)
+                except Exception:
+                    pass
+            return 130
+        finally:
+            if executor is not None:
+                try:
+                    executor.shutdown(wait=not fast_shutdown,
+                                      cancel_futures=fast_shutdown)
+                except Exception:
+                    pass
 
     print("[MAIN] All experiments completed.")
     return 0

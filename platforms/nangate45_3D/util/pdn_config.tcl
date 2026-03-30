@@ -154,7 +154,10 @@ proc build_tier_pdn {tier_name inst_list vdd_net vss_net rail_layer mesh_v mesh_
 # --------------------------
 
 # Create channels between rows (kept minimal, as you had)
-dbset [dbget top.insts.cell.subClass core -p2].pStatus unplaced
+set core_insts [dbGet top.insts.cell.subClass core -p2]
+if {[llength $core_insts] > 0} {
+  dbSet $core_insts.pStatus unplaced
+}
 finishFloorplan -fillPlaceBlockage hard $minCh
 cutRow
 finishFloorplan -fillPlaceBlockage hard $minCh

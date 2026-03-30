@@ -22,7 +22,10 @@
 
 set nets [list VDD VSS]
 #### Un Place Global Placed cells and cut Row ####
-dbset [dbget top.insts.cell.subClass core -p2 ].pStatus unplaced
+set core_insts [dbGet top.insts.cell.subClass core -p2]
+if {[llength $core_insts] > 0} {
+  dbSet $core_insts.pStatus unplaced
+}
 finishFloorplan -fillPlaceBlockage hard $minCh
 cutRow
 finishFloorplan -fillPlaceBlockage hard $minCh 
