@@ -15,17 +15,25 @@
 #   - Selection policy:
 #       prefer realized partition area ratio closest to the ORIGINAL center target
 #       then prefer smaller cut
+#   - Pin policy for cut evaluation:
+#       assign all top-level pins to the larger realized partition
+#       tie-break by larger base_balance, then partition 0
 #
 # Mode B) PAR_SCALE_FACTOR is not set:
 #   - Scan UB (balance_constraint) uniformly on [PAR_BAL_LO .. PAR_BAL_HI], N points
 #   - base_balance is FIXED to {0.5 0.5}
 #   - Selection policy:
 #       look at cut only
+#   - Pin policy for cut evaluation:
+#       assign all top-level pins to a fixed partition (default: 0)
 #
 # Inputs (env) [ONLY these partition knobs are read]:
 #   - PAR_BAL_LO, PAR_BAL_HI
 #   - PAR_BAL_ITERATION (N)
 #   - PAR_SCALE_FACTOR  (two floats that sum to 1.0; enables Mode A)
+#
+# Extra cut-evaluation knob:
+#   - PIN_PARTITION_MODE_B (optional, default 0)
 #
 # Outputs:
 #   - $RESULTS_DIR/partition.txt
@@ -47,6 +55,11 @@ proc write_kv_file {outfile kv_dict} {
   set fh [open $outfile w]
   puts $fh $kv_dict
   close $fh
+}
+
+proc append_plan_line {var_name line} {
+  upvar 1 $var_name plan_text
+  append plan_text $line "\n"
 }
 
 proc _sum_floats {lst} {
@@ -115,6 +128,12 @@ set ::CUT_TOL              0
 set ::IGNORE_NET_NAMES {VDD VSS VPWR VGND TOP_VDD TOP_VSS BOT_VDD BOT_VSS}
 set ::DUMP_CUT_NETS      false
 set ::CUT_NETS_DUMP_FILE "cut_nets.list"
+
+# Mode B pin side for cut evaluation
+set ::PIN_PARTITION_MODE_B [expr {int([_get PIN_PARTITION_MODE_B 0])}]
+if {$::PIN_PARTITION_MODE_B != 0 && $::PIN_PARTITION_MODE_B != 1} {
+  utl::error PAR 967 "PIN_PARTITION_MODE_B must be 0 or 1."
+}
 
 # ------------------------------------------------------------
 # Load design + floorplan
@@ -259,9 +278,36 @@ proc read_solution_part_map_kv {solution_file} {
   return $kv
 }
 
-proc calc_cut_nets_from_solution {solution_file ignore_net_names dump_file} {
+proc choose_pin_partition_for_cut {mode base_balance ratio0 ratio1} {
+  if {$mode eq "BB_SWEEP"} {
+    if {$ratio0 > $ratio1} {
+      return 0
+    }
+    if {$ratio1 > $ratio0} {
+      return 1
+    }
+
+    set b0 [expr {double([lindex $base_balance 0])}]
+    set b1 [expr {double([lindex $base_balance 1])}]
+    if {$b0 > $b1} {
+      return 0
+    }
+    if {$b1 > $b0} {
+      return 1
+    }
+    return 0
+  }
+
+  return $::PIN_PARTITION_MODE_B
+}
+
+proc calc_cut_nets_from_solution {solution_file ignore_net_names dump_file pin_partition} {
   set block [ord::get_db_block]
   if {$block eq "NULL"} { utl::error PAR 940 "No db block." }
+
+  if {$pin_partition != 0 && $pin_partition != 1} {
+    utl::error PAR 943 [format "Invalid pin_partition: %s" $pin_partition]
+  }
 
   array set part {}
   array set part [read_solution_part_map_kv $solution_file]
@@ -277,14 +323,47 @@ proc calc_cut_nets_from_solution {solution_file ignore_net_names dump_file} {
 
     set seen0 0
     set seen1 0
+    set has_mapped_inst 0
+    set has_bterm 0
+
     foreach iterm [odb::dbNet_getITerms $net] {
       set inst  [odb::dbITerm_getInst $iterm]
       set iname [odb::dbInst_getName $inst]
-      if {![info exists part($iname)]} { continue }
+      if {![info exists part($iname)]} {
+        continue
+      }
+
+      set has_mapped_inst 1
       set pid $part($iname)
-      if {$pid == 0} { set seen0 1 }
-      if {$pid == 1} { set seen1 1 }
-      if {$seen0 && $seen1} { break }
+      if {$pid == 0} {
+        set seen0 1
+      } elseif {$pid == 1} {
+        set seen1 1
+      }
+      if {$seen0 && $seen1} {
+        break
+      }
+    }
+
+    if {![catch {set bterms [odb::dbNet_getBTerms $net]}]} {
+      foreach bterm $bterms {
+        set has_bterm 1
+        break
+      }
+    }
+
+    if {$has_bterm} {
+      if {$pin_partition == 0} {
+        set seen0 1
+      } else {
+        set seen1 1
+      }
+    }
+
+    # Ignore nets that do not involve any mapped internal instance.
+    # Pure port-only nets should not consume the cut budget.
+    if {!$has_mapped_inst} {
+      continue
     }
 
     if {$seen0 && $seen1} {
@@ -444,7 +523,7 @@ proc candidate_better {cur best mode} {
 # TritonPart runner (timing-aware)
 # ------------------------------------------------------------
 proc run_triton_part {solution_file ub seed base_balance} {
-  puts [format {INFO %s: triton_part_design ub=%.6f seed=%d timing_aware=true base_balance=%s -> %s} \
+  puts [format {INFO %s: triton_part_design ub=%.6f seed=%d timing_aware=true base_balance=%s pin_constraints=disabled -> %s} \
     [_ts] $ub $seed $base_balance $solution_file]
   flush stdout
 
@@ -455,6 +534,49 @@ proc run_triton_part {solution_file ub seed base_balance} {
     -seed $seed \
     -solution_file $solution_file \
     -timing_aware_flag true
+}
+
+proc evaluate_candidate {point mode target_balance target_cut out_dir} {
+  set ub [dict get $point ub]
+  set base_balance [dict get $point base_balance]
+  set tag [dict get $point tag]
+  set sol [file join $out_dir [format {part.%s.seed%d.txt} $tag $::PAR_FIXED_SEED]]
+
+  run_triton_part $sol $ub $::PAR_FIXED_SEED $base_balance
+
+  set bal_stats [calc_part_area_balance_from_solution $sol $target_balance]
+  set ratio0 [dict get $bal_stats ratio0]
+  set ratio1 [dict get $bal_stats ratio1]
+  set balance_err [dict get $bal_stats balance_err]
+  set pin_partition [choose_pin_partition_for_cut $mode $base_balance $ratio0 $ratio1]
+
+  set dump_file ""
+  if {$::DUMP_CUT_NETS} {
+    set dump_file [file join $out_dir [format {cut_nets.%s.seed%d.list} $tag $::PAR_FIXED_SEED]]
+  }
+
+  set cut [calc_cut_nets_from_solution $sol $::IGNORE_NET_NAMES $dump_file $pin_partition]
+  set feasible [expr {$cut <= ($target_cut + $::CUT_TOL)}]
+  set abs_diff [expr {abs($cut - $target_cut)}]
+
+  puts [format {INFO %s: STAT tag=%s ub=%.6f base_balance=%s pin_partition=%d target_balance=%s cut=%d target=%d tol=%d feasible=%s abs_diff=%d area_ratio={%.6f %.6f} target_balance_err=%.6f} \
+    [_ts] $tag $ub $base_balance $pin_partition $target_balance $cut $target_cut $::CUT_TOL $feasible $abs_diff $ratio0 $ratio1 $balance_err]
+  flush stdout
+
+  return [dict create \
+    tag $tag \
+    ub $ub \
+    base_balance $base_balance \
+    target_balance $target_balance \
+    pin_partition $pin_partition \
+    cut $cut \
+    feasible $feasible \
+    abs_diff $abs_diff \
+    ratio0 $ratio0 \
+    ratio1 $ratio1 \
+    balance_err $balance_err \
+    solution_file $sol \
+    mode $mode]
 }
 
 # ------------------------------------------------------------
@@ -492,12 +614,20 @@ if {[info exists ::env(PAR_SCALE_FACTOR)] && $::env(PAR_SCALE_FACTOR) ne ""} {
   set target_balance [list "0.500000" "0.500000"]
 }
 
+set out_dir [file join $::env(RESULTS_DIR) partition_sweep]
+file mkdir $out_dir
+puts [format {INFO %s: Solve-time pin constraints are disabled by design. Pin handling is evaluation-only.} [_ts]]
+flush stdout
+
 set plan_file [file join $::env(RESULTS_DIR) partition.simple_plan.txt]
 set plan "PARTITION SWEEP @ [_ts]\n"
-append plan "floorplan_def=$fp_def\n"
-append plan [format "mode=%s N=%d seed=%d timing_aware=true\n" $mode $::PAR_BAL_ITER $::PAR_FIXED_SEED]
-append plan [format "target_cut=%d tol=%d\n" $target_cut $::CUT_TOL]
-append plan [format "target_balance=%s\n" $target_balance]
+append_plan_line plan "floorplan_def=$fp_def"
+append_plan_line plan [format "mode=%s N=%d seed=%d timing_aware=true" $mode $::PAR_BAL_ITER $::PAR_FIXED_SEED]
+append_plan_line plan [format "target_cut=%d tol=%d" $target_cut $::CUT_TOL]
+append_plan_line plan [format "target_balance=%s" $target_balance]
+append_plan_line plan [format "mode_b_pin_partition=%d" $::PIN_PARTITION_MODE_B]
+append_plan_line plan "solve_time_pin_constraints=disabled"
+append_plan_line plan "pin_handling=evaluation_only"
 
 set points {}
 
@@ -538,10 +668,11 @@ if {$mode eq "BB_SWEEP"} {
     lappend bb_points [format "{%s %s}(d=%s)" $b0s $b1s $ds]
   }
 
-  append plan [format "PAR_SCALE_FACTOR(center)=%s\n" $center_bb]
-  append plan "UB fixed = 1.000000\n"
-  append plan [format "delta_scan=\[0.01..0.06\] points=%s\n" [join $bb_points ", "]]
-  append plan "selection_policy=prefer_feasible_then_target_balance_err_then_cut_then_ub\n"
+  append_plan_line plan [format "PAR_SCALE_FACTOR(center)=%s" $center_bb]
+  append_plan_line plan "UB fixed = 1.000000"
+  append_plan_line plan [format "delta_scan=\[0.01..0.06\] points=%s" [join $bb_points ", "]]
+  append_plan_line plan "selection_policy=prefer_feasible_then_target_balance_err_then_cut_then_ub"
+  append_plan_line plan "pin_cut_policy=mode_a_use_larger_realized_partition"
 
 } else {
   set base_balance [list "0.500000" "0.500000"]
@@ -562,9 +693,10 @@ if {$mode eq "BB_SWEEP"} {
     lappend ub_points $ubs
   }
 
-  append plan [format "UB scan lo=%.6f hi=%.6f points=%s\n" $::PAR_BAL_LO $::PAR_BAL_HI [join $ub_points ","]]
-  append plan "base_balance fixed = {0.5 0.5}\n"
-  append plan "selection_policy=prefer_feasible_then_cut_then_ub\n"
+  append_plan_line plan [format "UB scan lo=%.6f hi=%.6f points=%s" $::PAR_BAL_LO $::PAR_BAL_HI [join $ub_points ","]]
+  append_plan_line plan "base_balance fixed = {0.5 0.5}"
+  append_plan_line plan "selection_policy=prefer_feasible_then_cut_then_ub"
+  append_plan_line plan [format "pin_cut_policy=mode_b_fixed_partition_%d" $::PIN_PARTITION_MODE_B]
 }
 
 set fh [open $plan_file w]
@@ -574,56 +706,10 @@ close $fh
 puts [format {INFO %s: mode=%s N=%d plan=%s} [_ts] $mode $::PAR_BAL_ITER $plan_file]
 flush stdout
 
-# ------------------------------------------------------------
-# Evaluate points, pick best
-# ------------------------------------------------------------
-set out_dir [file join $::env(RESULTS_DIR) partition_sweep]
-file mkdir $out_dir
-
 set best ""
 
 foreach p $points {
-  set ub [dict get $p ub]
-  set base_balance [dict get $p base_balance]
-  set tag [dict get $p tag]
-
-  set sol [file join $out_dir [format {part.%s.seed%d.txt} $tag $::PAR_FIXED_SEED]]
-
-  run_triton_part $sol $ub $::PAR_FIXED_SEED $base_balance
-
-  set dump_file ""
-  if {$::DUMP_CUT_NETS} {
-    set dump_file [file join $out_dir [format {cut_nets.%s.seed%d.list} $tag $::PAR_FIXED_SEED]]
-  }
-
-  set cut [calc_cut_nets_from_solution $sol $::IGNORE_NET_NAMES $dump_file]
-  set feasible [expr {$cut <= ($target_cut + $::CUT_TOL)}]
-  set abs_diff [expr {abs($cut - $target_cut)}]
-
-  # IMPORTANT:
-  # compare realized area ratio against the FIXED target balance, not the current sweep point
-  set bal_stats [calc_part_area_balance_from_solution $sol $target_balance]
-  set ratio0 [dict get $bal_stats ratio0]
-  set ratio1 [dict get $bal_stats ratio1]
-  set balance_err [dict get $bal_stats balance_err]
-
-  puts [format {INFO %s: STAT tag=%s ub=%.6f base_balance=%s target_balance=%s cut=%d target=%d tol=%d feasible=%s abs_diff=%d area_ratio={%.6f %.6f} target_balance_err=%.6f} \
-    [_ts] $tag $ub $base_balance $target_balance $cut $target_cut $::CUT_TOL $feasible $abs_diff $ratio0 $ratio1 $balance_err]
-  flush stdout
-
-  set cur [dict create \
-    tag $tag \
-    ub $ub \
-    base_balance $base_balance \
-    target_balance $target_balance \
-    cut $cut \
-    feasible $feasible \
-    abs_diff $abs_diff \
-    ratio0 $ratio0 \
-    ratio1 $ratio1 \
-    balance_err $balance_err \
-    solution_file $sol \
-    mode $mode]
+  set cur [evaluate_candidate $p $mode $target_balance $target_cut $out_dir]
 
   if {$best eq "" || [candidate_better $cur $best $mode]} {
     set best $cur
@@ -653,6 +739,7 @@ set sum_dict [dict create \
   best_tag [dict get $best tag] \
   best_ub [dict get $best ub] \
   best_base_balance [dict get $best base_balance] \
+  best_pin_partition [dict get $best pin_partition] \
   best_cut [dict get $best cut] \
   best_feasible [dict get $best feasible] \
   best_abs_diff [dict get $best abs_diff] \
@@ -664,8 +751,9 @@ set sum_dict [dict create \
   plan_file $plan_file]
 write_kv_file $final_sum $sum_dict
 
-puts [format {INFO %s: FINAL mode=%s best_tag=%s ub=%.6f base_balance=%s target_balance=%s cut=%d feasible=%s area_ratio={%.6f %.6f} target_balance_err=%.6f -> %s} \
+puts [format {INFO %s: FINAL mode=%s best_tag=%s ub=%.6f base_balance=%s pin_partition=%d target_balance=%s cut=%d feasible=%s area_ratio={%.6f %.6f} target_balance_err=%.6f -> %s} \
   [_ts] [dict get $best mode] [dict get $best tag] [dict get $best ub] [dict get $best base_balance] \
+  [dict get $best pin_partition] \
   [dict get $best target_balance] [dict get $best cut] [dict get $best feasible] \
   [dict get $best ratio0] [dict get $best ratio1] [dict get $best balance_err] $final_sol]
 puts [format {INFO %s: summary=%s} [_ts] $final_sum]
