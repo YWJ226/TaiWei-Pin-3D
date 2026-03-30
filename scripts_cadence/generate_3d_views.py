@@ -37,6 +37,15 @@ def strip_tier_suffix(master: str) -> str:
         return master[:-7]
     return master
 
+def swap_partition_labels(part_map: Dict[str, int]) -> Dict[str, int]:
+    return {k: (1 - v) if v in (0, 1) else v for k, v in part_map.items()}
+
+def _try_float(val) -> Optional[float]:
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return None
+
 # ------------------------------------------------------------
 # Partition file parsing
 # ------------------------------------------------------------
@@ -79,10 +88,13 @@ COMP_BEGIN_RE = re.compile(r"^\s*COMPONENTS\b", re.I)
 COMP_END_RE   = re.compile(r"^\s*END\s+COMPONENTS\b", re.I)
 NETS_BEGIN_RE = re.compile(r"^\s*NETS\b", re.I)
 NETS_END_RE   = re.compile(r"^\s*END\s+NETS\b", re.I)
+PINS_BEGIN_RE = re.compile(r"^\s*PINS\b", re.I)
+PINS_END_RE   = re.compile(r"^\s*END\s+PINS\b", re.I)
 
 # DEF component first line:
 #   - <inst> <master> ...
 COMP_FIRST_RE = re.compile(r"^(\s*)-\s+(\S+)\s+(\S+)(.*)$")
+PIN_FIRST_RE = re.compile(r"^\s*-\s+(\S+)\b")
 
 # DEF NET connection tuple: ( inst pin ) or ( PIN xxx ) or ( 123 456 ) etc.
 DEF_CONN_RE = re.compile(r"\(\s*(\S+)\s+(\S+)\s*\)")
@@ -132,6 +144,31 @@ def collect_inst_base_from_def(def_path: str) -> Dict[str, str]:
         i += 1
 
     return inst2base
+
+def collect_top_pins_from_def(def_path: str) -> List[str]:
+    """
+    Collect top-level pin names from DEF PINS section.
+    """
+    pin_names: List[str] = []
+    try:
+        lines = open(def_path, "r", encoding="utf-8", errors="ignore").readlines()
+    except FileNotFoundError:
+        print(f"[ERROR] DEF file '{def_path}' not found for collect_top_pins_from_def.")
+        return pin_names
+
+    in_pins = False
+    for line in lines:
+        if not in_pins and PINS_BEGIN_RE.match(line):
+            in_pins = True
+            continue
+        if in_pins and PINS_END_RE.match(line):
+            break
+        if in_pins:
+            m = PIN_FIRST_RE.match(line)
+            if m:
+                pin_names.append(normalize_from_def(m.group(1)))
+
+    return pin_names
 
 def rewrite_def_net_block(
     net_lines: List[str],
@@ -419,12 +456,28 @@ def parse_cell_map_json(cell_map_path: Optional[str]):
     base_to_upper: Dict[str, str] = {}
     base_to_pin_map: Dict[str, Dict[str, str]] = {}
     base_to_upper_extra_pins: Dict[str, List[str]] = {}
+    base_to_tier_areas: Dict[str, Tuple[float, float]] = {}
+    has_heterogeneous_area_map = False
 
     if not cell_map_path:
-        return base_to_bottom, base_to_upper, base_to_pin_map, base_to_upper_extra_pins
+        return (
+            base_to_bottom,
+            base_to_upper,
+            base_to_pin_map,
+            base_to_upper_extra_pins,
+            base_to_tier_areas,
+            has_heterogeneous_area_map,
+        )
     if not os.path.exists(cell_map_path):
         print(f"[WARN] cell map JSON '{cell_map_path}' not found, skip mapping.")
-        return base_to_bottom, base_to_upper, base_to_pin_map, base_to_upper_extra_pins
+        return (
+            base_to_bottom,
+            base_to_upper,
+            base_to_pin_map,
+            base_to_upper_extra_pins,
+            base_to_tier_areas,
+            has_heterogeneous_area_map,
+        )
 
     with open(cell_map_path, "r", encoding="utf-8") as f:
         data = json.load(f)
@@ -432,7 +485,14 @@ def parse_cell_map_json(cell_map_path: Optional[str]):
     cells = data.get("cells", {})
     if not isinstance(cells, dict):
         print("[WARN] cell map JSON format error: 'cells' is not a dict.")
-        return base_to_bottom, base_to_upper, base_to_pin_map, base_to_upper_extra_pins
+        return (
+            base_to_bottom,
+            base_to_upper,
+            base_to_pin_map,
+            base_to_upper_extra_pins,
+            base_to_tier_areas,
+            has_heterogeneous_area_map,
+        )
 
     for key, cell in cells.items():
         if not isinstance(cell, dict):
@@ -457,7 +517,29 @@ def parse_cell_map_json(cell_map_path: Optional[str]):
             if extra:
                 base_to_upper_extra_pins[base] = extra
 
-    return base_to_bottom, base_to_upper, base_to_pin_map, base_to_upper_extra_pins
+        if isinstance(bottom, dict) and isinstance(upper, dict):
+            bw = _try_float(bottom.get("width"))
+            bh = _try_float(bottom.get("height"))
+            uw = _try_float(upper.get("width"))
+            uh = _try_float(upper.get("height"))
+            if None not in (bw, bh, uw, uh):
+                bottom_area = bw * bh
+                upper_area = uw * uh
+                base_to_tier_areas[base] = (bottom_area, upper_area)
+
+                bottom_macro = bottom.get("macro")
+                upper_macro = upper.get("macro")
+                if bottom_macro != upper_macro or abs(bottom_area - upper_area) > 1.0e-12:
+                    has_heterogeneous_area_map = True
+
+    return (
+        base_to_bottom,
+        base_to_upper,
+        base_to_pin_map,
+        base_to_upper_extra_pins,
+        base_to_tier_areas,
+        has_heterogeneous_area_map,
+    )
 
 def rewrite_verilog(
     v_in: str,
@@ -549,44 +631,129 @@ def rewrite_verilog(
     with open(v_out, "w", encoding="utf-8") as f:
         f.write("".join(out_chunks))
 
-def ensure_upper_has_more_cells(part_map: Dict[str, int], ratio_threshold: float = 2.0) -> Dict[str, int]:
+def choose_partition_orientation_by_area(
+    part_map: Dict[str, int],
+    def_path: str,
+    base_to_tier_areas: Dict[str, Tuple[float, float]],
+    has_heterogeneous_area_map: bool,
+) -> Dict[str, int]:
     """
-    Only when the instance-count imbalance is large (>= ratio_threshold),
-    force the larger side to be die=0 (upper) by swapping 0/1 globally if needed.
-
-    Example: ratio_threshold=2.0 means swap only if one side has >=2x instances of the other.
+    For heterogeneous platforms, choose whether partition label 0 or 1 should map
+    to the upper tier based on mapped cell areas from map.json.
     """
     if not part_map:
         return part_map
 
-    c0 = sum(1 for v in part_map.values() if v == 0)
-    c1 = sum(1 for v in part_map.values() if v == 1)
-
-    # Handle degenerate cases
-    if c0 == 0 and c1 == 0:
-        print("[INFO] Partition map has no 0/1 labels; keep as-is.")
+    if not has_heterogeneous_area_map or not base_to_tier_areas:
+        print("[INFO] Keep original partition labels: no usable heterogeneous map-based area data.")
         return part_map
 
-    if min(c0, c1) == 0:
-        # One side is empty -> treat as extreme imbalance; put the non-empty side on upper
-        if c0 < c1:
-            print(f"[INFO] Swapping (extreme imbalance): upper(0)={c0}, bottom(1)={c1}.")
-            return {k: (1 - v) if v in (0, 1) else v for k, v in part_map.items()}
-        print(f"[INFO] Keep (extreme imbalance already ok): upper(0)={c0}, bottom(1)={c1}.")
+    inst2base = collect_inst_base_from_def(def_path)
+    if not inst2base:
+        print("[INFO] Keep original partition labels: cannot collect instance masters from DEF for area estimation.")
         return part_map
 
-    ratio = max(c0, c1) / min(c0, c1)
+    original_upper_area = 0.0
+    original_bottom_area = 0.0
+    swapped_upper_area = 0.0
+    swapped_bottom_area = 0.0
+    mapped_count = 0
+    skipped_count = 0
 
-    if ratio >= ratio_threshold:
-        # Large imbalance: ensure upper(0) is the larger side
-        if c0 < c1:
-            print(f"[INFO] Swapping (ratio={ratio:.2f} >= {ratio_threshold}): upper(0)={c0} < bottom(1)={c1}.")
-            return {k: (1 - v) if v in (0, 1) else v for k, v in part_map.items()}
-        print(f"[INFO] Keep (ratio={ratio:.2f} >= {ratio_threshold}, already ok): upper(0)={c0}, bottom(1)={c1}.")
+    for inst_name, die in part_map.items():
+        if die not in (0, 1):
+            skipped_count += 1
+            continue
+
+        base = inst2base.get(inst_name)
+        if base is None:
+            skipped_count += 1
+            continue
+
+        tier_areas = base_to_tier_areas.get(base)
+        if tier_areas is None:
+            skipped_count += 1
+            continue
+
+        bottom_area, upper_area = tier_areas
+        mapped_count += 1
+
+        if die == 0:
+            original_upper_area += upper_area
+            swapped_bottom_area += bottom_area
+        else:
+            original_bottom_area += bottom_area
+            swapped_upper_area += upper_area
+
+    if mapped_count == 0:
+        print("[INFO] Keep original partition labels: no instances matched usable map-based area data.")
         return part_map
 
-    # Not a large imbalance: keep original labels
-    print(f"[INFO] Keep (ratio={ratio:.2f} < {ratio_threshold}): upper(0)={c0}, bottom(1)={c1}.")
+    original_max_area = max(original_upper_area, original_bottom_area)
+    swapped_max_area = max(swapped_upper_area, swapped_bottom_area)
+    print(
+        "[INFO] Partition orientation area estimate: "
+        f"mapped={mapped_count} skipped={skipped_count}; "
+        f"original upper={original_upper_area:.6f} bottom={original_bottom_area:.6f} max={original_max_area:.6f}; "
+        f"swapped upper={swapped_upper_area:.6f} bottom={swapped_bottom_area:.6f} max={swapped_max_area:.6f}"
+    )
+
+    if swapped_max_area + 1.0e-12 < original_max_area:
+        print("[INFO] Selected swapped partition orientation: label 0 -> bottom, label 1 -> upper.")
+        return swap_partition_labels(part_map)
+
+    print("[INFO] Selected original partition orientation: label 0 -> upper, label 1 -> bottom.")
+    return part_map
+
+def choose_partition_orientation_by_pins(
+    part_map: Dict[str, int],
+    def_path: str,
+) -> Dict[str, int]:
+    """
+    For homogeneous platforms, use the top-level pin assignments in partition.txt
+    to place the pin-heavier cluster on the bottom tier.
+    """
+    if not part_map:
+        return part_map
+
+    top_pins = set(collect_top_pins_from_def(def_path))
+    if not top_pins:
+        print("[INFO] Keep original partition labels: no DEF top-level pins found for homogeneous pin-based orientation.")
+        return part_map
+
+    pin_count_0 = 0
+    pin_count_1 = 0
+    skipped_count = 0
+
+    for name, die in part_map.items():
+        if name not in top_pins:
+            continue
+        if die == 0:
+            pin_count_0 += 1
+        elif die == 1:
+            pin_count_1 += 1
+        else:
+            skipped_count += 1
+
+    total_pins = pin_count_0 + pin_count_1
+    if total_pins == 0:
+        print("[INFO] Keep original partition labels: no partitioned top-level pins matched DEF PINS.")
+        return part_map
+
+    print(
+        "[INFO] Homogeneous pin-based orientation estimate: "
+        f"partition0_pins={pin_count_0} partition1_pins={pin_count_1} skipped={skipped_count}"
+    )
+
+    if pin_count_0 > pin_count_1:
+        print("[INFO] Selected swapped partition orientation: pin-heavier cluster moved to bottom tier.")
+        return swap_partition_labels(part_map)
+
+    if pin_count_1 > pin_count_0:
+        print("[INFO] Selected original partition orientation: pin-heavier cluster already on bottom tier.")
+        return part_map
+
+    print("[INFO] Keep original partition labels: homogeneous pin counts tie.")
     return part_map
 
 def main():
@@ -603,12 +770,26 @@ def main():
 
     # Partition map (must exist if you want deterministic conversion)
     part = parse_partition_file(args.partition)
-    part = ensure_upper_has_more_cells(part)
-    
+    (
+        base_to_bottom,
+        base_to_upper,
+        base_to_pin_map,
+        base_to_upper_extra_pins,
+        base_to_tier_areas,
+        has_heterogeneous_area_map,
+    ) = parse_cell_map_json(args.cell_map)
+
+    part = choose_partition_orientation_by_area(
+        part,
+        args.def_in,
+        base_to_tier_areas,
+        has_heterogeneous_area_map,
+    )
+    if part and (not has_heterogeneous_area_map or not base_to_tier_areas):
+        part = choose_partition_orientation_by_pins(part, args.def_in)
+
     if not part:
         print("[WARN] No partition map provided/parsed. Conversion will only apply JSON macro mapping where possible.")
-
-    base_to_bottom, base_to_upper, base_to_pin_map, base_to_upper_extra_pins = parse_cell_map_json(args.cell_map)
 
     rewrite_def(args.def_in, args.def_out, part, base_to_bottom, base_to_upper, base_to_pin_map)
     rewrite_verilog(args.v_in, args.v_out, part, base_to_bottom, base_to_upper, base_to_pin_map, base_to_upper_extra_pins)
