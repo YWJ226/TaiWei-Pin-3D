@@ -8,7 +8,7 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 _ACTIVE_PROCS: Dict[int, subprocess.Popen] = {}
 _ACTIVE_PROCS_LOCK = threading.Lock()
@@ -251,6 +251,15 @@ class RemoteLaunch:
     pid_path: Path
 
 
+@dataclass(frozen=True)
+class RemoteLaunchSnapshot:
+    launch: RemoteLaunch
+    state: str
+    rc: Optional[int]
+    pid: Optional[int]
+    pid_alive: Optional[bool]
+
+
 def _new_remote_launch(dispatch_dir: Path, stage: str) -> RemoteLaunch:
     stamp = int(time.time() * 1000)
     job_id = f"{stage}.{os.getpid()}.{stamp}"
@@ -263,6 +272,41 @@ def _new_remote_launch(dispatch_dir: Path, stage: str) -> RemoteLaunch:
         rc_path=dispatch_dir / f"{job_id}.rc",
         pid_path=dispatch_dir / f"{job_id}.pid",
     )
+
+
+def _launch_from_job_id(dispatch_dir: Path, job_id: str) -> RemoteLaunch:
+    stage = job_id.split(".", 1)[0]
+    return RemoteLaunch(
+        job_id=job_id,
+        stage=stage,
+        wrapper_path=dispatch_dir / f"{job_id}.wrapper.sh",
+        state_path=dispatch_dir / f"{job_id}.state",
+        rc_path=dispatch_dir / f"{job_id}.rc",
+        pid_path=dispatch_dir / f"{job_id}.pid",
+    )
+
+
+def list_remote_launches(dispatch_dir: Path,
+                         stage: Optional[str] = None) -> List[RemoteLaunch]:
+    if not dispatch_dir.exists():
+        return []
+
+    pattern = "*.state" if stage is None else f"{stage}.*.state"
+    launches: List[RemoteLaunch] = []
+    for state_path in sorted(
+            dispatch_dir.glob(pattern),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+    ):
+        job_id = state_path.stem
+        launches.append(_launch_from_job_id(dispatch_dir, job_id))
+    return launches
+
+
+def latest_remote_launch(dispatch_dir: Path,
+                         stage: Optional[str] = None) -> Optional[RemoteLaunch]:
+    launches = list_remote_launches(dispatch_dir, stage=stage)
+    return launches[0] if launches else None
 
 
 def stage_label_from_script(script_path: Path) -> str:
@@ -387,6 +431,90 @@ def _read_text(path: Path) -> str:
         return ""
 
 
+def _ssh_run(host: str,
+             remote_cmd: str,
+             *,
+             timeout: int = 10,
+             capture_output: bool = True) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [
+            "ssh",
+            "-x",
+            "-o",
+            "BatchMode=yes",
+            host,
+            f"bash --noprofile --norc -c {shlex.quote(remote_cmd)}",
+        ],
+        env=_ssh_client_env(),
+        stdout=subprocess.PIPE if capture_output else subprocess.DEVNULL,
+        stderr=subprocess.PIPE if capture_output else subprocess.DEVNULL,
+        check=False,
+        text=True,
+        timeout=timeout,
+    )
+
+
+def remote_pid_is_alive(host: str, pid: int) -> Optional[bool]:
+    remote_cmd = (
+        f"kill -0 -- -{pid} >/dev/null 2>&1 || "
+        f"kill -0 {pid} >/dev/null 2>&1"
+    )
+    try:
+        proc = _ssh_run(host, remote_cmd, capture_output=False)
+    except Exception:
+        return None
+    if proc.returncode == 0:
+        return True
+    if proc.returncode == 1:
+        return False
+    return None
+
+
+def snapshot_remote_launch(host: str,
+                           launch: RemoteLaunch) -> RemoteLaunchSnapshot:
+    state = _read_text(launch.state_path)
+    rc_text = _read_text(launch.rc_path)
+    pid_text = _read_text(launch.pid_path)
+
+    rc = int(rc_text) if rc_text.lstrip("-").isdigit() else None
+    pid = int(pid_text) if pid_text.lstrip("-").isdigit() else None
+    pid_alive = remote_pid_is_alive(host, pid) if pid is not None else None
+
+    return RemoteLaunchSnapshot(
+        launch=launch,
+        state=state,
+        rc=rc,
+        pid=pid,
+        pid_alive=pid_alive,
+    )
+
+
+def kill_remote_launch(host: str,
+                       launch: RemoteLaunch,
+                       *,
+                       rc: int = 143) -> bool:
+    pid_text = _read_text(launch.pid_path)
+    if not pid_text.lstrip("-").isdigit():
+        return False
+
+    pid = int(pid_text)
+    remote_cmd = (
+        f"kill -TERM -- -{pid} >/dev/null 2>&1 || "
+        f"kill -TERM {pid} >/dev/null 2>&1 || true; "
+        "sleep 1; "
+        f"kill -KILL -- -{pid} >/dev/null 2>&1 || "
+        f"kill -KILL {pid} >/dev/null 2>&1 || true"
+    )
+    try:
+        _ssh_run(host, remote_cmd, capture_output=False)
+    except Exception:
+        return False
+
+    launch.rc_path.write_text(f"{rc}\n")
+    launch.state_path.write_text("failed\n")
+    return True
+
+
 def _wait_remote_launch(host: str, launch: RemoteLaunch) -> None:
     _register_active_remote_job(launch.job_id, host, launch.pid_path)
     start = time.time()
@@ -419,30 +547,10 @@ def _terminate_active_remote_jobs() -> None:
         try:
             if not pid_path.exists():
                 continue
-            pgid = pid_path.read_text().strip()
-            if not pgid or not pgid.lstrip("-").isdigit():
-                continue
-            remote_cmd = (
-                f"kill -TERM -- -{pgid} >/dev/null 2>&1 || "
-                f"kill -TERM {pgid} >/dev/null 2>&1 || true; "
-                "sleep 1; "
-                f"kill -KILL -- -{pgid} >/dev/null 2>&1 || "
-                f"kill -KILL {pgid} >/dev/null 2>&1 || true"
-            )
-            subprocess.run(
-                [
-                    "ssh",
-                    "-x",
-                    "-o",
-                    "BatchMode=yes",
-                    host,
-                    f"bash --noprofile --norc -c {shlex.quote(remote_cmd)}",
-                ],
-                env=_ssh_client_env(),
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                check=False,
-                timeout=10,
+            kill_remote_launch(
+                host,
+                _launch_from_job_id(pid_path.parent, pid_path.stem),
+                rc=143,
             )
         except Exception:
             pass

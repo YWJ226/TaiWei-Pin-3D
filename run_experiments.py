@@ -2,6 +2,7 @@
 import argparse
 import json
 import os
+import signal
 import socket
 import subprocess
 import sys
@@ -119,6 +120,8 @@ def write_task_status(
     message: str = "",
     pid: Optional[int] = None,
     local_host: Optional[str] = None,
+    extra: Optional[Dict[str, object]] = None,
+    target_host: Optional[str] = None,
 ) -> None:
     status_path = _status_path(cfg)
     status_path.parent.mkdir(parents=True, exist_ok=True)
@@ -127,7 +130,8 @@ def write_task_status(
         "flow": cfg.flow,
         "tech": cfg.tech,
         "case": cfg.case,
-        "target_host": _target_label(cfg, local_host),
+        "target_host": target_host if target_host else _target_label(
+            cfg, local_host),
         "pwd": str(cfg.repo_root),
         "launcher_pwd": os.getcwd(),
         "status": status,
@@ -138,6 +142,8 @@ def write_task_status(
         "run_log": str(run_log),
         "eval_log": str(eval_log),
     }
+    if extra:
+        payload.update(extra)
     tmp_path = status_path.with_suffix(".json.tmp")
     with open(tmp_path, "w") as fh:
         json.dump(payload, fh, indent=2, sort_keys=True)
@@ -181,10 +187,15 @@ def mark_interrupted_tasks(tasks: Sequence[RunConfig]) -> None:
 
 
 def print_status_summary(tasks: Sequence[RunConfig]) -> None:
+    payloads = [read_task_status(task) for task in tasks]
+    print_status_summary_from_payloads(payloads)
+
+
+def print_status_summary_from_payloads(payloads: Sequence[Dict[str, object]]
+                                       ) -> None:
     counts: Dict[str, int] = {}
     active = []
-    for task in tasks:
-        payload = read_task_status(task)
+    for payload in payloads:
         status = str(payload.get("status", "unknown"))
         counts[status] = counts.get(status, 0) + 1
         if status == "running":
@@ -203,6 +214,234 @@ def print_status_summary(tasks: Sequence[RunConfig]) -> None:
             f"phase={payload.get('phase')} "
             f"updated_at={payload.get('updated_at')}"
         )
+
+
+def print_status_details(payloads: Sequence[Dict[str, object]]) -> None:
+    for payload in payloads:
+        parts = [
+            f"{payload.get('target_host', 'localhost')}",
+            f"{payload.get('flow')}/{payload.get('tech')}/{payload.get('case')}",
+            f"status={payload.get('status')}",
+            f"phase={payload.get('phase')}",
+        ]
+        if payload.get("dispatch_job_id"):
+            parts.append(
+                f"dispatch={payload.get('dispatch_stage')}:{payload.get('dispatch_state')}"
+            )
+        if payload.get("dispatch_pid") is not None:
+            parts.append(f"dispatch_pid={payload.get('dispatch_pid')}")
+        if payload.get("dispatch_pid_alive") is not None:
+            parts.append(
+                f"dispatch_pid_alive={payload.get('dispatch_pid_alive')}")
+        print("[TASK] " + " ".join(parts))
+
+
+def _status_host_from_payload(payload: Dict[str, object]) -> Optional[str]:
+    raw = str(payload.get("target_host", "")).strip()
+    if not raw:
+        return None
+    return raw.split("[", 1)[0]
+
+
+def _status_has_terminal_state(payload: Dict[str, object]) -> bool:
+    return str(payload.get("status", "unknown")) in ("ok", "failed")
+
+
+def _local_pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except Exception:
+        return False
+
+
+def _dispatch_metadata(cfg: RunConfig,
+                       dispatch_stage: str,
+                       snapshot: remote.RemoteLaunchSnapshot) -> Dict[str, object]:
+    return {
+        "dispatch_dir": str(_dispatch_dir(cfg)),
+        "dispatch_job_id": snapshot.launch.job_id,
+        "dispatch_stage": dispatch_stage,
+        "dispatch_state": snapshot.state,
+        "dispatch_rc": snapshot.rc,
+        "dispatch_pid": snapshot.pid,
+        "dispatch_pid_alive": snapshot.pid_alive,
+    }
+
+
+def sync_task_status(cfg: RunConfig) -> Dict[str, object]:
+    payload = read_task_status(cfg)
+    host = _status_host_from_payload(payload)
+    target_host = str(payload.get("target_host", "")).strip() or None
+    phase = str(payload.get("phase", "unknown"))
+    status = str(payload.get("status", "unknown"))
+
+    if host:
+        dispatch_dir = _dispatch_dir(cfg)
+        preferred_stage = phase if phase in ("run", "eval") else None
+        launch = None
+        if preferred_stage:
+            launch = remote.latest_remote_launch(dispatch_dir,
+                                                stage=preferred_stage)
+        if launch is None:
+            launch = remote.latest_remote_launch(dispatch_dir, stage="eval")
+        if launch is None:
+            launch = remote.latest_remote_launch(dispatch_dir, stage="run")
+
+        if launch is not None:
+            snapshot = remote.snapshot_remote_launch(host, launch)
+            extra = _dispatch_metadata(cfg, launch.stage, snapshot)
+            if snapshot.state in ("starting", "running"):
+                if snapshot.pid_alive is False:
+                    write_task_status(
+                        cfg,
+                        status="failed",
+                        phase=launch.stage,
+                        message=
+                        "[monitor] dispatch says running, but remote pid is gone",
+                        pid=int(payload.get("pid"))
+                        if str(payload.get("pid", "")).isdigit() else None,
+                        extra=extra,
+                        target_host=target_host,
+                    )
+                else:
+                    write_task_status(
+                        cfg,
+                        status="running",
+                        phase=launch.stage,
+                        message=str(payload.get("message", "")),
+                        pid=int(payload.get("pid"))
+                        if str(payload.get("pid", "")).isdigit() else None,
+                        extra=extra,
+                        target_host=target_host,
+                    )
+            elif snapshot.state == "failed":
+                msg = str(payload.get("message", ""))
+                if not msg or "[manual]" not in msg:
+                    msg = f"[monitor] remote {launch.stage} failed"
+                write_task_status(
+                    cfg,
+                    status="failed",
+                    phase=launch.stage,
+                    message=msg,
+                    pid=int(payload.get("pid"))
+                    if str(payload.get("pid", "")).isdigit() else None,
+                    extra=extra,
+                    target_host=target_host,
+                )
+            elif snapshot.state == "ok":
+                if launch.stage == "eval" or not cfg.do_eval:
+                    write_task_status(
+                        cfg,
+                        status="ok",
+                        phase="done",
+                        message=str(payload.get("message", "")),
+                        pid=int(payload.get("pid"))
+                        if str(payload.get("pid", "")).isdigit() else None,
+                        extra=extra,
+                        target_host=target_host,
+                    )
+                else:
+                    write_task_status(
+                        cfg,
+                        status="running",
+                        phase="eval" if cfg.do_eval else "done",
+                        message=
+                        "[monitor] run stage completed, waiting for eval dispatch",
+                        pid=int(payload.get("pid"))
+                        if str(payload.get("pid", "")).isdigit() else None,
+                        extra=extra,
+                        target_host=target_host,
+                    )
+            return read_task_status(cfg)
+
+    pid_text = str(payload.get("pid", "")).strip()
+    if status in ("running", "queued") and pid_text.isdigit():
+        pid = int(pid_text)
+        if not _local_pid_alive(pid):
+            write_task_status(
+                cfg,
+                status="failed",
+                phase=phase,
+                message="[monitor] local launcher pid is gone",
+                pid=pid,
+                target_host=target_host,
+            )
+            return read_task_status(cfg)
+
+    return payload
+
+
+def collect_task_statuses(tasks: Sequence[RunConfig],
+                          *,
+                          sync: bool) -> List[Dict[str, object]]:
+    if sync:
+        return [sync_task_status(task) for task in tasks]
+    return [read_task_status(task) for task in tasks]
+
+
+def _kill_local_task(payload: Dict[str, object]) -> bool:
+    pid_text = str(payload.get("pid", "")).strip()
+    if not pid_text.isdigit():
+        return False
+    pid = int(pid_text)
+    if not _local_pid_alive(pid):
+        return False
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return False
+    except Exception:
+        return False
+    time.sleep(1)
+    if _local_pid_alive(pid):
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except Exception:
+            pass
+    return True
+
+
+def kill_task(cfg: RunConfig) -> bool:
+    payload = sync_task_status(cfg)
+    if _status_has_terminal_state(payload):
+        return False
+
+    host = _status_host_from_payload(payload)
+    target_host = str(payload.get("target_host", "")).strip() or None
+    killed = False
+    dispatch_dir = _dispatch_dir(cfg)
+    launch = None
+    if host:
+        stage = str(payload.get("dispatch_stage", "")).strip() or None
+        launch = remote.latest_remote_launch(dispatch_dir, stage=stage)
+        if launch is None:
+            launch = remote.latest_remote_launch(dispatch_dir, stage="eval")
+        if launch is None:
+            launch = remote.latest_remote_launch(dispatch_dir, stage="run")
+
+    if host and launch is not None:
+        killed = remote.kill_remote_launch(host, launch, rc=143)
+    else:
+        killed = _kill_local_task(payload)
+
+    write_task_status(
+        cfg,
+        status="failed",
+        phase=str(payload.get("phase", "unknown")),
+        message="[manual] terminated by run_experiments.py --kill-running",
+        pid=int(payload.get("pid"))
+        if str(payload.get("pid", "")).isdigit() else None,
+        extra={
+            "dispatch_dir": str(_dispatch_dir(cfg)),
+            "manual_kill": True,
+            "manual_kill_ok": killed,
+        },
+        target_host=target_host,
+    )
+    return killed
 
 
 def _run_task_script(
@@ -526,10 +765,26 @@ def parse_args(default_repo_root: Optional[str], ) -> argparse.Namespace:
         default=30,
         help="Seconds between status summary prints.",
     )
-    p.add_argument(
+    action_group = p.add_mutually_exclusive_group()
+    action_group.add_argument(
         "--list",
         action="store_true",
         help="List matched tasks and exit.",
+    )
+    action_group.add_argument(
+        "--show-status",
+        action="store_true",
+        help="Sync and print current status of matched tasks, then exit.",
+    )
+    action_group.add_argument(
+        "--monitor",
+        action="store_true",
+        help="Sync and monitor matched tasks until all are terminal.",
+    )
+    action_group.add_argument(
+        "--kill-running",
+        action="store_true",
+        help="Terminate matched running or queued tasks, then exit.",
     )
     p.add_argument(
         "--num-shards",
@@ -619,13 +874,19 @@ def main() -> int:
     tasks = shard_tasks(tasks, args.num_shards, args.shard_index)
 
     hosts: List[str] = []
-    if args.host_list:
+    management_mode = args.show_status or args.monitor or args.kill_running
+
+    if args.host_list and not management_mode:
         hosts = parse_host_list(args.host_list)
         if not hosts:
             print("[MAIN] ERROR: no hosts parsed from --host-list",
                   file=sys.stderr)
             return 2
         tasks = assign_hosts(tasks, hosts, args.max_jobs_per_host)
+    elif args.host_list and management_mode:
+        print(
+            "[MAIN] management mode ignores --host-list and uses existing status/dispatch metadata."
+        )
 
     print(f"[MAIN] repo_root={repo_root}")
     print(f"[MAIN] flows={flows} techs={techs} cases={cases} jobs={args.jobs}")
@@ -653,6 +914,41 @@ def main() -> int:
         print("[MAIN] No tasks matched the requested filters.")
         return 0
 
+    if args.show_status:
+        payloads = collect_task_statuses(tasks, sync=True)
+        print_status_summary_from_payloads(payloads)
+        print_status_details(payloads)
+        return 0
+
+    if args.monitor:
+        while True:
+            payloads = collect_task_statuses(tasks, sync=True)
+            print_status_summary_from_payloads(payloads)
+            print_status_details(payloads)
+            if all(_status_has_terminal_state(p) for p in payloads):
+                print("[MAIN] Monitor completed: all matched tasks are terminal.")
+                return 0
+            time.sleep(args.status_interval)
+
+    if args.kill_running:
+        payloads = collect_task_statuses(tasks, sync=True)
+        print_status_summary_from_payloads(payloads)
+        killed = 0
+        skipped = 0
+        for task, payload in zip(tasks, payloads):
+            if _status_has_terminal_state(payload):
+                skipped += 1
+                continue
+            if kill_task(task):
+                killed += 1
+            else:
+                skipped += 1
+        payloads = collect_task_statuses(tasks, sync=True)
+        print_status_summary_from_payloads(payloads)
+        print_status_details(payloads)
+        print(f"[MAIN] kill_running: killed={killed} skipped={skipped}")
+        return 0
+
     init_task_statuses(tasks)
     print(f"[MAIN] live status files under {_status_dir(repo_root)}")
 
@@ -661,6 +957,12 @@ def main() -> int:
         executor: Optional[ThreadPoolExecutor] = None
         fast_shutdown = False
         host_batches = build_host_batches(tasks)
+        if not host_batches:
+            print(
+                "[MAIN] ERROR: host dispatch is enabled but no host batches were built.",
+                file=sys.stderr,
+            )
+            return 2
         try:
             executor = ThreadPoolExecutor(max_workers=len(host_batches))
             futures = [
@@ -672,7 +974,8 @@ def main() -> int:
                 done, pending = wait(pending,
                                      timeout=args.status_interval,
                                      return_when=FIRST_COMPLETED)
-                print_status_summary(tasks)
+                print_status_summary_from_payloads(
+                    collect_task_statuses(tasks, sync=True))
                 for fut in done:
                     _ = fut.result()
         except KeyboardInterrupt:
@@ -704,7 +1007,8 @@ def main() -> int:
                 done, pending = wait(pending,
                                      timeout=args.status_interval,
                                      return_when=FIRST_COMPLETED)
-                print_status_summary(tasks)
+                print_status_summary_from_payloads(
+                    collect_task_statuses(tasks, sync=True))
                 for fut in done:
                     _ = fut.result()
         except KeyboardInterrupt:
