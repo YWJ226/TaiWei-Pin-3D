@@ -978,11 +978,31 @@ VIA via9_0 DEFAULT
     RECT -0.4 -0.4 0.4 0.4 ;
 END via9_0
 
+# hb_layer via
 VIA hb_layer_0 DEFAULT
   LAYER hb_layer ; RECT -0.016 -0.016 0.016 0.016 ;
   LAYER M10 ; RECT -0.4 -0.4 0.4 0.4 ;
   LAYER M6_m ; RECT -0.027 -0.016 0.027 0.016 ;
 END hb_layer_0
+
+VIA hb_layer_1 DEFAULT
+  LAYER hb_layer ; RECT -0.016 -0.016 0.016 0.016 ;
+  LAYER M10 ; RECT -0.8 -0.8 0.8 0.8 ;
+  LAYER M6_m ; RECT -0.027 -0.016 0.027 0.016 ;
+END hb_layer_1
+
+VIA hb_layer_2 DEFAULT
+  LAYER hb_layer ; RECT -0.016 -0.016 0.016 0.016 ;
+  LAYER M10 ; RECT -0.4 -0.8 0.4 0.8 ;
+  LAYER M6_m ; RECT -0.027 -0.016 0.027 0.016 ;
+END hb_layer_2
+
+VIA hb_layer_3 DEFAULT
+  LAYER hb_layer ; RECT -0.016 -0.016 0.016 0.016 ;
+  LAYER M10 ; RECT -0.8 -0.4 0.8 0.4 ;
+  LAYER M6_m ; RECT -0.027 -0.016 0.027 0.016 ;
+END hb_layer_3
+# hb_layer end
 
 VIA VIA_M1m_M2add DEFAULT
   LAYER M1_m ;   RECT -0.009 -0.011 0.009 0.011 ;
@@ -1097,12 +1117,12 @@ END M3add_M2add
 
 VIARULE hb_layerArray-0 GENERATE
   LAYER M10 ;
-    ENCLOSURE 0 0 ;
+    ENCLOSURE 0.384 0.384 ;
   LAYER M6_m ;
-    ENCLOSURE 0 0 ;
+    ENCLOSURE 0.011 0 ;
   LAYER hb_layer ;
     RECT -0.016 -0.016 0.016 0.016 ;
-    SPACING 1.568 BY 1.568 ;
+    SPACING 1.6 BY 1.6 ;
 END hb_layerArray-0
 
 VIARULE Via1Array-0 GENERATE
@@ -1315,7 +1335,7 @@ SPACING
   SAMENET via7 via7 0.44 ;
   SAMENET via8 via8 0.44 ;
   SAMENET via9 via9 0.88 ;
-  SAMENET hb_layer hb_layer 1.568 ;
+  SAMENET hb_layer hb_layer 1.6 ;
   SAMENET via1 via2 0.0 STACK ;
   SAMENET via2 via3 0.0 STACK ;
   SAMENET via3 via4 0.0 STACK ;

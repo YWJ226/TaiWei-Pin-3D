@@ -41,3 +41,4 @@ platforms/process_scripts
 
 # temp cases
 work.codex/
+.pbs_*

@@ -224,8 +224,8 @@ LEF_FILES_CTS_OWNER ?= $(LEF_FILES_CTS)
 LEF_FILES_CTS_RECEIVE ?= $(LEF_FILES_NONE_CTS)
 LEF_FILES_CTS_FINALIZE ?= $(LEF_FILES_NONE_CTS)
 LEF_FILES_SPLIT ?= $(TECH_LEF) $(SC_LEF) $(ADDITIONAL_LEFS_DEFAULT)
-LEF_FILES_ROUTE_ONLY ?= $(LEF_FILES_NONE_CTS)
-LEF_FILES_ROUTE ?= $(LEF_FILES_ROUTE_ONLY)
+LEF_FILES_ROUTE_ONLY ?= $(LEF_FILES)
+LEF_FILES_ROUTE ?= $(LEF_FILES)
 LEF_FILES_POSTROUTE_RECEIVE ?= $(LEF_FILES_NONE_CTS)
 LEF_FILES_POSTROUTE_OWNER ?= $(LEF_FILES_CTS)
 
@@ -787,8 +787,8 @@ cds-cts-finalize:
 	@echo "[CDS] CTS finalize (LEF/COVER: LEF_FILES_CTS_FINALIZE)"
 	$(call _run_with_tmp_log,$(LOG_DIR)/4_3_cts_finalize.log,LEF_FILES="$(LEF_FILES_CTS_FINALIZE)" COVER_LAYER="$(COVER_LAYER)" $(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_3d_cts_finalize.log -files $(CADENCE_SCRIPTS_DIR)/innovus_3d_cts_finalize.tcl)
 
-.PHONY: cds-route
-cds-route:
+.PHONY: cds-route-new
+cds-route-new:
 	@$(call _mkstdirs)
 	@echo "[CDS] Route (route-only -> postroute-receive -> postroute-owner)"
 	@$(MAKE) --no-print-directory DESIGN_CONFIG="$(DESIGN_CONFIG)" cds-route-only
@@ -798,8 +798,8 @@ cds-route:
 	@cat $(LOG_DIR)/cadence_innovus_3d_route_only.log $(LOG_DIR)/cadence_innovus_3d_postroute_receive.log $(LOG_DIR)/cadence_innovus_3d_postroute_owner.log > $(LOG_DIR)/cadence_innovus_3d_route.log
 
 # Explicit legacy route target for robustness comparison.
-.PHONY: cds-route-legacy
-cds-route-legacy:
+.PHONY: cds-route
+cds-route:
 	@$(call _mkstdirs)
 	@echo "[CDS] Legacy route"
 	$(call _run_with_tmp_log,$(LOG_DIR)/5_route.log,LEF_FILES="$(LEF_FILES_ROUTE)" $(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_3d_route.log -files $(CADENCE_SCRIPTS_DIR)/innovus_3d_route_legacy.tcl)

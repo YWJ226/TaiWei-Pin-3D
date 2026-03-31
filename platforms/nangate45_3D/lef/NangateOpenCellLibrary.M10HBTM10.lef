@@ -310,8 +310,8 @@ END VHB
 
 LAYER HB_layer
   TYPE ROUTING ;
-  SPACING 0.6 ;
-  WIDTH 1.0 ;
+  SPACING 0.8 ;
+  WIDTH 0.8 ;
   PITCH 1.6 ;
   AREA 1.0 ;
   MINSIZE 1.0 1.0 ;
@@ -595,14 +595,14 @@ VIA VHB_0 DEFAULT
   LAYER M10 ;
     RECT -0.4 -0.4 0.4 0.4 ;
   LAYER HB_layer ;
-    RECT -0.5 -0.5 0.5 0.5 ;
+    RECT -0.4 -0.4 0.4 0.4 ;
 END VHB_0
 
 VIA VHB_m_0 DEFAULT
   LAYER VHB_m ;
     RECT -0.4 -0.4 0.4 0.4 ;
   LAYER HB_layer ;
-    RECT -0.5 -0.5 0.5 0.5 ;
+    RECT -0.4 -0.4 0.4 0.4 ;
   LAYER M10_m ;
     RECT -0.4 -0.4 0.4 0.4 ;
 END VHB_m_0
@@ -1478,20 +1478,20 @@ VIARULE VHBArray-0 GENERATE
   LAYER M10 ;
     ENCLOSURE 0 0 ;
   LAYER HB_layer ;
-    ENCLOSURE 0.1 0.1 ;
+    ENCLOSURE 0 0 ;
   LAYER VHB ;
     RECT -0.4 -0.4 0.4 0.4 ;
-    SPACING 0.8 BY 0.8 ;
+    SPACING 1.6 BY 1.6 ;
 END VHBArray-0
 
 VIARULE VHB_mArray-0 GENERATE
   LAYER HB_layer ;
-    ENCLOSURE 0.1 0.1 ;
+    ENCLOSURE 0 0 ;
   LAYER M10_m ;
     ENCLOSURE 0 0 ;
   LAYER VHB_m ;
     RECT -0.4 -0.4 0.4 0.4 ;
-    SPACING 0.8 BY 0.8 ;
+    SPACING 1.6 BY 1.6 ;
 END VHB_mArray-0
 
 SPACING
@@ -1505,6 +1505,7 @@ SPACING
   SAMENET M8 M8 0.4 ;
   SAMENET M9 M9 0.8 ;
   SAMENET M10 M10 0.8 ;
+  SAMENET HB_layer HB_layer 0.8 ;
   SAMENET M10_m M10_m 0.8 ;
   SAMENET M9_m M9_m 0.8 ;
   SAMENET M8_m M8_m 0.4 ;
@@ -1525,7 +1526,6 @@ SPACING
   SAMENET via8 via8 0.44 ;
   SAMENET via9 via9 0.88 ;
   SAMENET VHB VHB 0.8 ;
-  SAMENET HB_layer HB_layer 0.6 ;
   SAMENET VHB_m VHB_m 0.8 ;
   SAMENET via9_m via9_m 0.88 ;
   SAMENET via8_m via8_m 0.44 ;
