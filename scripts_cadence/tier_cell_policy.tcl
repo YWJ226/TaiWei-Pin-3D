@@ -366,6 +366,51 @@ proc _normalize_allow_net_class {raw_class} {
   }
 }
 
+proc _pin3d_flow_switch_mode {env_name default_mode} {
+  set raw_value $default_mode
+  if {[info exists ::env($env_name)] && $::env($env_name) ne ""} {
+    set raw_value $::env($env_name)
+  }
+
+  set key [string tolower [string trim $raw_value]]
+  switch -- $key {
+    "" -
+    "1" -
+    "on" -
+    "true" -
+    "yes" -
+    "enabled" {
+      return "on"
+    }
+    "0" -
+    "off" -
+    "false" -
+    "no" -
+    "disabled" {
+      return "off"
+    }
+    default {
+      error "Unknown ${env_name} value '$raw_value'. Use on/off."
+    }
+  }
+}
+
+proc pin3d_allow_net_flow_mode {} {
+  return [_pin3d_flow_switch_mode "PIN3D_ALLOW_NET_FLOW" "on"]
+}
+
+proc pin3d_allow_net_flow_enabled {} {
+  expr {[pin3d_allow_net_flow_mode] eq "on"}
+}
+
+proc pin3d_split_net_flow_mode {} {
+  return [_pin3d_flow_switch_mode "PIN3D_SPLIT_NET_FLOW" "on"]
+}
+
+proc pin3d_split_net_flow_enabled {} {
+  expr {[pin3d_split_net_flow_mode] eq "on"}
+}
+
 proc _format_allow_net_class {allow_net} {
   switch -- $allow_net {
     "upper_only" {
@@ -381,11 +426,17 @@ proc _format_allow_net_class {allow_net} {
 }
 
 proc _requested_allow_net_class {quiet} {
+  return [_requested_allow_net_class_with_default "all" $quiet]
+}
+
+proc _requested_allow_net_class_with_default {default_class quiet} {
   set raw_class ""
   if {[info exists ::env(TIER_ALLOW_NET)]} {
     set raw_class $::env(TIER_ALLOW_NET)
   } elseif {[info exists ::env(ALLOW_NET)]} {
     set raw_class $::env(ALLOW_NET)
+  } else {
+    set raw_class $default_class
   }
 
   set active_class [_normalize_allow_net_class $raw_class]
@@ -393,6 +444,21 @@ proc _requested_allow_net_class {quiet} {
     puts "INFO: Requested allow_net '$raw_class' -> $active_class"
   }
   return $active_class
+}
+
+proc _effective_allow_net_class {requested_class {quiet 0}} {
+  set requested_class [_normalize_allow_net_class $requested_class]
+  if {![pin3d_allow_net_flow_enabled]} {
+    if {!$quiet} {
+      puts "INFO: PIN3D_ALLOW_NET_FLOW=off -> force allow_net all"
+    }
+    return "all"
+  }
+  return $requested_class
+}
+
+proc _report_allow_net_resolution {stage_label requested_class effective_class} {
+  puts "INFO: ${stage_label} PIN3D_ALLOW_NET_FLOW=[pin3d_allow_net_flow_mode] requested_allow_net=[_format_allow_net_class $requested_class] effective_allow_net=[_format_allow_net_class $effective_class]"
 }
 
 proc _allow_net_stage_tag {allow_net} {

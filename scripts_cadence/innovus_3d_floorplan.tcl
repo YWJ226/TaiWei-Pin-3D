@@ -6,29 +6,32 @@
 # innovus_3d_floorplan.tcl
 # Build the 3D floorplan only.
 # ==========================================
+
+# Core setup
 source $::env(CADENCE_SCRIPTS_DIR)/utils.tcl
 source $::env(CADENCE_SCRIPTS_DIR)/lib_setup.tcl
 source $::env(CADENCE_SCRIPTS_DIR)/design_setup.tcl
+source $::env(CADENCE_SCRIPTS_DIR)/handoff_manager.tcl
 
-set LOG_DIR      [_get LOG_DIR]
-set RESULTS_DIR  [_get RESULTS_DIR]
-set REPORTS_DIR  [_get REPORTS_DIR]
-set OBJECTS_DIR  [_get OBJECTS_DIR]
+# Environment directories
+set LOG_DIR       [_get LOG_DIR]
+set RESULTS_DIR   [_get RESULTS_DIR]
+set REPORTS_DIR   [_get REPORTS_DIR]
+set OBJECTS_DIR   [_get OBJECTS_DIR]
 
-set V_IN [file join $RESULTS_DIR "${DESIGN}_3D.fp.v"]
-set sdc  [file join $RESULTS_DIR "1_synth.sdc"]
+# Stage handoff
+set stage_name "floorplan-3d"
+# Inputs : ${DESIGN}_3D.fp.v / 1_synth.sdc
+# Outputs: 2_3_floorplan_3d.def / 2_3_floorplan_3d.v / 1_synth.sdc
+set stage_paths [handoff_stage_paths $stage_name $RESULTS_DIR $OBJECTS_DIR $LOG_DIR]
+handoff_bind_stage_io $stage_paths
+set sdc $SDC_IN
 
+# Additional setup
 source $::env(CADENCE_SCRIPTS_DIR)/mmmc_setup.tcl
+handoff_log_paths $stage_paths
 
-set init_lef_file            $lefs
-set init_mmmc_file           ""
-set init_design_settop       1
-set init_top_cell            $DESIGN
-set init_verilog             $V_IN
-set init_design_netlisttype  "Verilog"
-
-init_design -setup {WC_VIEW} -hold {BC_VIEW}
-_common_setup
+handoff_init_design_from_paths $stage_paths -require_def 0
 
 set CORE_UTIL    [_get CORE_UTILIZATION 60]
 set ASPECT_RATIO [_get CORE_ASPECT_RATIO 1.0]
@@ -80,9 +83,15 @@ if {$CREATE_OBS_STAGE == "FLOORPLAN"} {
     create_hb_layer_obs -estimated_hbt_count $cross_tier_net_estimate
 }
 fit
-dumpToGIF [file join $LOG_DIR "2_3_floorplan_3d.png"]
-defOut -floorplan [file join $RESULTS_DIR "2_3_floorplan_3d.def"]
-saveNetlist [file join $RESULTS_DIR "2_3_floorplan_3d.v"]
+handoff_write_stage_outputs $stage_paths \
+  -def_args {-floorplan} \
+  -copy_sdc 0 \
+  -save_design 0 \
+  -write_png 1 \
+  -write_manifest 1 \
+  -extra_manifest [list \
+    cross_tier_net_estimate $cross_tier_net_estimate \
+    create_obs_stage $CREATE_OBS_STAGE]
 
 puts "INFO: 3D floorplan done."
 exit

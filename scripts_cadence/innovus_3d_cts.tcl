@@ -4,35 +4,11 @@
 # generation of innovators.
 # ============================================================
 # innovus_3d_cts.tcl
-# Compatibility wrapper for staged CTS flow.
-# The public Makefile targets now launch dedicated stage scripts directly.
+# Deprecated wrapper. This file no longer dispatches CTS stages.
+# Launch the dedicated stage scripts directly:
+#   innovus_3d_cts_owner_tree.tcl
+#   innovus_3d_cts_receive_opt.tcl
+#   innovus_3d_cts_finalize.tcl
 # ============================================================
 
-if {[info exists ::env(CTS_STAGE)] && $::env(CTS_STAGE) ne ""} {
-  set cts_stage [string tolower $::env(CTS_STAGE)]
-} else {
-  set cts_stage "owner-tree"
-}
-
-switch -- $cts_stage {
-  owner-tree -
-  owner_tree {
-    source $::env(CADENCE_SCRIPTS_DIR)/innovus_3d_cts_owner_tree.tcl
-  }
-  receive-opt -
-  receive_opt {
-    source $::env(CADENCE_SCRIPTS_DIR)/innovus_3d_cts_receive_opt.tcl
-  }
-  owner-mixed -
-  owner_mixed -
-  mixed {
-    error "CTS_STAGE '$cts_stage' is deprecated after the split-net flow update. Use owner-tree / receive-opt / finalize."
-  }
-  finalize -
-  finalize_only {
-    source $::env(CADENCE_SCRIPTS_DIR)/innovus_3d_cts_finalize.tcl
-  }
-  default {
-    error "Unsupported CTS_STAGE '$cts_stage'. Use owner-tree / receive-opt / finalize."
-  }
-}
+error "innovus_3d_cts.tcl is deprecated. Use innovus_3d_cts_owner_tree.tcl / innovus_3d_cts_receive_opt.tcl / innovus_3d_cts_finalize.tcl directly."

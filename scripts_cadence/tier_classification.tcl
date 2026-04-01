@@ -138,11 +138,18 @@ proc tier_classify_object_ptr {obj_ptr} {
 }
 
 proc tier_net_presence_counts {net_ptr} {
+  lassign [tier_net_presence_detail_counts $net_ptr] upper_count bottom_count _ unknown_count
+  return [list $upper_count $bottom_count $unknown_count]
+}
+
+proc tier_net_presence_detail_counts {net_ptr} {
   set upper_count 0
   set bottom_count 0
+  set io_count 0
   set unknown_count 0
 
   foreach term [dbGet -e $net_ptr.terms] {
+    incr io_count
     switch -- [tier_classify_term_ptr $term] {
       upper {
         incr upper_count
@@ -176,5 +183,5 @@ proc tier_net_presence_counts {net_ptr} {
     }
   }
 
-  return [list $upper_count $bottom_count $unknown_count]
+  return [list $upper_count $bottom_count $io_count $unknown_count]
 }

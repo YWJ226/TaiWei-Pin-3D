@@ -48,6 +48,8 @@ run_make_with_allow_net() {
 echo "[run] direct commercial flow for ${ENABLEMENT}/${DESIGN_NICKNAME}"
 echo "[run] flow_variant=${FLOW_VARIANT}"
 echo "[run] outer_iterations=${OUTER_ITERATIONS}"
+echo "[run] PIN3D_ALLOW_NET_FLOW=${PIN3D_ALLOW_NET_FLOW:-on}"
+echo "[run] PIN3D_SPLIT_NET_FLOW=${PIN3D_SPLIT_NET_FLOW:-on}"
 
 if [[ "${SKIP_2D_PART:-0}" != "1" ]]; then
   # input: RTL + SDC in designs/asap7_nangate45_3D/gcd/
@@ -71,10 +73,11 @@ run_make cds-3d-floorplan
 run_make cds-3d-io
 
 # input: 2_4_floorplan_io.def/.v/.sdc
-# output: 2_4_floorplan_split.def/.v/.sdc
+# output: updated 2_4_floorplan_io.def/.v/.sdc in place
+# note: PIN3D_SPLIT_NET_FLOW=off keeps this stage as pass-through
 run_make cds-3d-split-net
 
-# input: 2_4_floorplan_split.def/.v/.sdc
+# input: 2_4_floorplan_io.def/.v/.sdc
 # output: 2_5_place_macro_upper.def/.v
 run_make cds-place-macro-upper
 
@@ -134,3 +137,15 @@ run_make cds-route
 run_make cds-restore
 
 echo "[run] completed ${ENABLEMENT}/${DESIGN_NICKNAME} (${FLOW_VARIANT})"
+
+cat <<'EOF'
+
+Examples:
+  PIN3D_ALLOW_NET_FLOW=on PIN3D_SPLIT_NET_FLOW=on \
+    bash test/commercial/CDS_3D_NEW_FLOW.sh asap7_3D cadence_cmp_allownet cadence ibex
+
+  PIN3D_ALLOW_NET_FLOW=off PIN3D_SPLIT_NET_FLOW=off \
+    bash test/commercial/CDS_3D_NEW_FLOW.sh asap7_3D cadence_cmp_noallownet cadence ibex
+
+  bash test/commercial/CDS_3D_ALLOW_NET_MATRIX.sh
+EOF

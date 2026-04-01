@@ -85,8 +85,27 @@ proc extract_wire_length {} {
 # Cross-tier reporting helpers
 # --------------------------
 proc _report_net_tier_presence {net_ptr} {
-  lassign [tier_net_presence_counts $net_ptr] upper_count bottom_count unknown_count
-  return [list [expr {$upper_count > 0}] [expr {$bottom_count > 0}] [expr {$unknown_count > 0}]]
+  lassign [tier_net_presence_detail_counts $net_ptr] upper_count bottom_count io_count unknown_count
+  return [list [expr {$upper_count > 0}] [expr {$bottom_count > 0}] [expr {$io_count > 0}] [expr {$unknown_count > 0}]]
+}
+
+proc _cross_tier_category_from_presence {has_upper has_bottom has_io has_unknown} {
+  if {$has_upper && $has_bottom && $has_io} {
+    return "Upper_Bottom_IO"
+  }
+  if {$has_upper && $has_bottom} {
+    return "Upper_Bottom"
+  }
+  if {$has_upper && $has_io} {
+    return "Upper_IO"
+  }
+  if {$has_bottom && $has_io} {
+    return "Bottom_IO"
+  }
+  if {$has_unknown} {
+    return "Unknown_Tier"
+  }
+  return ""
 }
 
 proc _report_clock_names {} {
@@ -161,12 +180,14 @@ proc _report_is_clock_net_ptr {net_ptr} {
 # Cross Tier Net Count
 # Rule:
 #   - A net is cross-tier if it connects:
-#       1) at least one upper-tier instance and one bottom-tier instance
-#       2) at least one upper-tier object and one bottom-tier object
+#       1) upper + bottom
+#       2) upper + IO
+#       3) bottom + IO
+#       4) upper + bottom + IO
 # Options:
 #   -clock_only 1 : report only clock-related cross-tier nets
 # --------------------------
-proc extract_cross_tier_nets {list_rpt_path args} {
+proc extract_cross_tier_net_stats {list_rpt_path args} {
   array set opt {
     -clock_only 0
   }
@@ -180,7 +201,14 @@ proc extract_cross_tier_nets {list_rpt_path args} {
     set opt($k) $v
   }
 
-  set count 0
+  set total_cross_tier 0
+  array set category_counts {
+    Upper_Bottom    0
+    Upper_IO        0
+    Bottom_IO       0
+    Upper_Bottom_IO 0
+    Unknown_Tier    0
+  }
 
   set report_lines [list]
   if {$opt(-clock_only)} {
@@ -196,21 +224,23 @@ proc extract_cross_tier_nets {list_rpt_path args} {
       continue
     }
 
-    lassign [_report_net_tier_presence $net] has_upper has_bottom has_unknown
-
-    set net_type ""
-    if {$has_upper && $has_bottom} {
-      set net_type "Upper_Bottom"
-    } elseif {$has_unknown} {
-      set net_type "Unknown_Tier"
-    }
+    lassign [_report_net_tier_presence $net] has_upper has_bottom has_io has_unknown
+    set net_type [_cross_tier_category_from_presence $has_upper $has_bottom $has_io $has_unknown]
 
     if {$net_type ne ""} {
-      if {$net_type eq "Upper_Bottom"} {
-        incr count
+      if {$net_type ne "Unknown_Tier"} {
+        incr total_cross_tier
       }
+      incr category_counts($net_type)
       lappend report_lines [format "%-40s | %s" [dbGet $net.name] $net_type]
     }
+  }
+
+  lappend report_lines ""
+  lappend report_lines [format "Total Cross-Tier Nets: %d" $total_cross_tier]
+  lappend report_lines "Category Totals:"
+  foreach key {Upper_Bottom Upper_IO Bottom_IO Upper_Bottom_IO Unknown_Tier} {
+    lappend report_lines [format "  %-18s %d" $key $category_counts($key)]
   }
 
   if {$list_rpt_path ne ""} {
@@ -218,11 +248,21 @@ proc extract_cross_tier_nets {list_rpt_path args} {
     foreach line $report_lines {
       puts $fh $line
     }
-    puts $fh "Total Cross-Tier Nets: $count"
     close $fh
   }
 
-  return $count
+  return [dict create \
+    cross_tier_all $total_cross_tier \
+    upper_bottom $category_counts(Upper_Bottom) \
+    upper_io $category_counts(Upper_IO) \
+    bottom_io $category_counts(Bottom_IO) \
+    upper_bottom_io $category_counts(Upper_Bottom_IO) \
+    unknown $category_counts(Unknown_Tier)]
+}
+
+proc extract_cross_tier_nets {list_rpt_path args} {
+  set stats [extract_cross_tier_net_stats $list_rpt_path {*}$args]
+  return [dict get $stats cross_tier_all]
 }
 
 # --------------------------
@@ -420,7 +460,13 @@ proc _extract_postRoute {outdir} {
   
   # Generate report inside outdir
   set cross_tier_rpt [file join $outdir "cross_tier_nets.list"]
-  set cross_tier_cnt [extract_cross_tier_nets $cross_tier_rpt]
+  set cross_tier_stats [extract_cross_tier_net_stats $cross_tier_rpt]
+  set cross_tier_cnt [dict get $cross_tier_stats cross_tier_all]
+  set cross_tier_upper_bottom [dict get $cross_tier_stats upper_bottom]
+  set cross_tier_upper_io [dict get $cross_tier_stats upper_io]
+  set cross_tier_bottom_io [dict get $cross_tier_stats bottom_io]
+  set cross_tier_upper_bottom_io [dict get $cross_tier_stats upper_bottom_io]
+  set cross_tier_unknown [dict get $cross_tier_stats unknown]
   
   # 6) Connectivity
   set conn_rpt [file join $outdir erc_connectivity.rpt]
@@ -443,7 +489,7 @@ proc _extract_postRoute {outdir} {
   set hc        [lindex $rpt1 2]
   set vc        [lindex $rpt1 3]
   
-  return "$stage,$core_area,$std_area,$mac_area,$rpt2,$rpt4,$wns,$tns,$hc,$vc,$drc_v,$fep_v,$hb_via_cnt,$cross_tier_cnt,$conn92,$conn94,$conn_total,$erc_ms,$erc_mc,$erc_mf,$erc_total"
+  return "$stage,$core_area,$std_area,$mac_area,$rpt2,$rpt4,$wns,$tns,$hc,$vc,$drc_v,$fep_v,$hb_via_cnt,$cross_tier_cnt,$cross_tier_upper_bottom,$cross_tier_upper_io,$cross_tier_bottom_io,$cross_tier_upper_bottom_io,$cross_tier_unknown,$conn92,$conn94,$conn_total,$erc_ms,$erc_mc,$erc_mf,$erc_total"
 }
 
 # ---- Public entrypoint ----
@@ -471,7 +517,7 @@ proc extract_report {args} {
   
   if {$write_csv ne ""} {
     set fid [open $write_csv w]
-    puts $fid "stage,core_area,std_cell_area,macro_area,total_power,wire_length,wns,tns,h_cong,v_cong,drc_violations,fep_violations,hb_via_count,cross_tier_nets,connectivity_improvfc92,connectivity_improvfc94,connectivity_total,erc_max_slew,erc_max_cap,erc_max_fanout,erc_total_elec"
+    puts $fid "stage,core_area,std_cell_area,macro_area,total_power,wire_length,wns,tns,h_cong,v_cong,drc_violations,fep_violations,hb_via_count,cross_tier_nets,cross_tier_upper_bottom,cross_tier_upper_io,cross_tier_bottom_io,cross_tier_upper_bottom_io,cross_tier_unknown,connectivity_improvfc92,connectivity_improvfc94,connectivity_total,erc_max_slew,erc_max_cap,erc_max_fanout,erc_total_elec"
     puts $fid $csv_line
     close $fid
   }
@@ -498,16 +544,23 @@ proc extract_report {args} {
     puts $fh [format "%-26s %s" "HB VIA Count (Phys)"    [lindex $f 12]]
     puts $fh [format "%-26s %s" "Cross-Tier Nets (All)"  [lindex $f 13]]
     puts $fh ""
+    puts $fh "=== Cross-Tier Breakdown ==="
+    puts $fh [format "%-26s %s" "Upper_Bottom"           [lindex $f 14]]
+    puts $fh [format "%-26s %s" "Upper_IO"               [lindex $f 15]]
+    puts $fh [format "%-26s %s" "Bottom_IO"              [lindex $f 16]]
+    puts $fh [format "%-26s %s" "Upper_Bottom_IO"        [lindex $f 17]]
+    puts $fh [format "%-26s %s" "Unknown_Tier"           [lindex $f 18]]
+    puts $fh ""
     puts $fh "=== Connectivity (verifyConnectivity) ==="
-    puts $fh [format "%-26s %s" "IMPVFC-92 (Disconnected)" [lindex $f 14]]
-    puts $fh [format "%-26s %s" "IMPVFC-94 (Dangling)"     [lindex $f 15]]
-    puts $fh [format "%-26s %s" "Total (info created)"     [lindex $f 16]]
+    puts $fh [format "%-26s %s" "IMPVFC-92 (Disconnected)" [lindex $f 19]]
+    puts $fh [format "%-26s %s" "IMPVFC-94 (Dangling)"     [lindex $f 20]]
+    puts $fh [format "%-26s %s" "Total (info created)"     [lindex $f 21]]
     puts $fh ""
     puts $fh "=== ERC (Electrical: report_constraint) ==="
-    puts $fh [format "%-26s %s" "Max Slew Violations"      [lindex $f 17]]
-    puts $fh [format "%-26s %s" "Max Cap Violations"       [lindex $f 18]]
-    puts $fh [format "%-26s %s" "Max Fanout Violations"    [lindex $f 19]]
-    puts $fh [format "%-26s %s" "ERC Total (sum)"          [lindex $f 20]]
+    puts $fh [format "%-26s %s" "Max Slew Violations"      [lindex $f 22]]
+    puts $fh [format "%-26s %s" "Max Cap Violations"       [lindex $f 23]]
+    puts $fh [format "%-26s %s" "Max Fanout Violations"    [lindex $f 24]]
+    puts $fh [format "%-26s %s" "ERC Total (sum)"          [lindex $f 25]]
     close $fh
   }
   return $csv_line

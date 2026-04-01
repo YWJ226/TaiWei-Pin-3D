@@ -646,7 +646,6 @@ cds-3d-pdn:
 	@$(call _mkstdirs)
 	@echo "[CDS] 3D PDN"
 	$(call _run_with_tmp_log,$(LOG_DIR)/2_pdn.log,$(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_3d_pdn.log -files $(CADENCE_SCRIPTS_DIR)/innovus_3d_pdn.tcl)
-	@cp -f "$(RESULTS_DIR)/1_synth.sdc" "$(RESULTS_DIR)/2_floorplan.sdc" 2>/dev/null || true
 
 .PHONY: cds-3d-floorplan
 cds-3d-floorplan:
@@ -682,9 +681,6 @@ cds-place-macro-bottom:
 cds-3d-pdn-only:
 	@$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) cds-3d-pdn-only-bottom
 	@$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) cds-3d-pdn-only-upper
-	@cp -f $(RESULTS_DIR)/1_synth.sdc           $(RESULTS_DIR)/2_floorplan.sdc 2>/dev/null || true
-	@cp -f $(RESULTS_DIR)/2_6_floorplan_pdn.def $(RESULTS_DIR)/2_floorplan.def 2>/dev/null || true
-	@cp -f $(RESULTS_DIR)/2_6_floorplan_pdn.v   $(RESULTS_DIR)/2_floorplan.v   2>/dev/null || true
 
 .PHONY: cds-3d-pdn-only-bottom
 cds-3d-pdn-only-bottom:
@@ -730,26 +726,21 @@ cds-place-bottom:
 
 .PHONY: cds-gp2lg
 cds-gp2lg:
-	@cp -rf $(RESULTS_DIR)/${DESIGN_NAME}_3D.tmp.def $(RESULTS_DIR)/$(DESIGN_NAME)_3D.lg.def
-	@cp -rf $(RESULTS_DIR)/${DESIGN_NAME}_3D.tmp.v   $(RESULTS_DIR)/$(DESIGN_NAME)_3D.lg.v
+	@$(call _mkstdirs)
+	@echo "[CDS] GP2LG handoff copy"
+	@tclsh "$(CADENCE_SCRIPTS_DIR)/handoff_copy_gp2lg.tcl"
 
 .PHONY: cds-legalize-upper
 cds-legalize-upper:
 	@$(call _mkstdirs)
 	@echo "[CDS] Legalize upper"
 	$(call _run_with_tmp_log,$(LOG_DIR)/3_5_lg_upper.log,LEF_FILES="$(LEF_FILES_BOTTOM_COVER)" $(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_opt_lg_upper.log -files $(CADENCE_SCRIPTS_DIR)/innovus_opt_lg_upper.tcl)
-	@cp -f $(RESULTS_DIR)/$(DESIGN_NAME)_3D.lg.def $(RESULTS_DIR)/3_place.def
-	@cp -f $(RESULTS_DIR)/$(DESIGN_NAME)_3D.lg.v   $(RESULTS_DIR)/3_place.v
-	@cp -f $(RESULTS_DIR)/2_floorplan.sdc          $(RESULTS_DIR)/3_place.sdc
 
 .PHONY: cds-legalize-bottom
 cds-legalize-bottom:
 	@$(call _mkstdirs)
 	@echo "[CDS] Legalize bottom"
 	$(call _run_with_tmp_log,$(LOG_DIR)/3_4_lg_bottom.log,LEF_FILES="$(LEF_FILES_UPPER_COVER)" $(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_opt_lg_bottom.log -files $(CADENCE_SCRIPTS_DIR)/innovus_opt_lg_bottom.tcl)
-	@cp -f $(RESULTS_DIR)/$(DESIGN_NAME)_3D.lg.def $(RESULTS_DIR)/3_place.def
-	@cp -f $(RESULTS_DIR)/$(DESIGN_NAME)_3D.lg.v   $(RESULTS_DIR)/3_place.v
-	@cp -f $(RESULTS_DIR)/2_floorplan.sdc          $(RESULTS_DIR)/3_place.sdc
 
 .PHONY: cds-cts
 cds-cts:

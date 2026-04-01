@@ -5,38 +5,34 @@
 # ============================================================
 # innovus_3d_split_net.tcl
 # Standalone post-IO mixed-tier net split stage.
-# Reads:
-#   2_4_floorplan_io.def / 2_4_floorplan_io.v
-# Writes:
-#   2_4_floorplan_split.def / 2_4_floorplan_split.v
 # ============================================================
 
+# Core setup
 source $::env(CADENCE_SCRIPTS_DIR)/utils.tcl
 source $::env(CADENCE_SCRIPTS_DIR)/lib_setup.tcl
 source $::env(CADENCE_SCRIPTS_DIR)/design_setup.tcl
+source $::env(CADENCE_SCRIPTS_DIR)/handoff_manager.tcl
 
-set LOG_DIR      [_get LOG_DIR]
-set RESULTS_DIR  [_get RESULTS_DIR]
-set REPORTS_DIR  [_get REPORTS_DIR]
-set OBJECTS_DIR  [_get OBJECTS_DIR]
+# Environment directories
+set LOG_DIR       [_get LOG_DIR]
+set RESULTS_DIR   [_get RESULTS_DIR]
+set REPORTS_DIR   [_get REPORTS_DIR]
+set OBJECTS_DIR   [_get OBJECTS_DIR]
 
-set DEF_IN  [file join $RESULTS_DIR "2_4_floorplan_io.def"]
-set V_IN    [file join $RESULTS_DIR "2_4_floorplan_io.v"]
-set SDC_IN  [file join $RESULTS_DIR "1_synth.sdc"]
-set sdc     $SDC_IN
+# Stage handoff
+set stage_name "split-net"
+# Inputs : 2_4_floorplan_io.def / 2_4_floorplan_io.v / 1_synth.sdc
+# Outputs: 2_4_floorplan_io.def / 2_4_floorplan_io.v / 1_synth.sdc / ${DESIGN}_3d_after_split_net.enc
+set stage_paths [handoff_stage_paths $stage_name $RESULTS_DIR $OBJECTS_DIR $LOG_DIR]
+handoff_bind_stage_io $stage_paths
+set sdc $SDC_IN
 
+# Additional setup
+source $::env(CADENCE_SCRIPTS_DIR)/tier_cell_policy.tcl
 source $::env(CADENCE_SCRIPTS_DIR)/mmmc_setup.tcl
+handoff_log_paths $stage_paths
 
-set init_lef_file $lefs
-set init_mmmc_file ""
-set init_design_settop 1
-set init_top_cell $DESIGN
-set init_verilog $V_IN
-set init_design_netlisttype "Verilog"
-
-init_design -setup {WC_VIEW} -hold {BC_VIEW}
-_common_setup
-defIn $DEF_IN
+handoff_init_design_from_paths $stage_paths
 
 source $::env(CADENCE_SCRIPTS_DIR)/extract_report.tcl
 source $::env(CADENCE_SCRIPTS_DIR)/split_net.tcl
@@ -52,19 +48,49 @@ namespace eval ::mixed_tier_split {
   set CFG(verify_processed) 1
 }
 
-::mixed_tier_split::run
+set split_summary [file join $LOG_DIR "split_net.summary.rpt"]
+set split_actions [file join $LOG_DIR "split_net.actions.rpt"]
+set split_mode "enabled"
+if {[pin3d_split_net_flow_enabled]} {
+  ::mixed_tier_split::run
+} else {
+  set split_mode "disabled_pass_through"
+  set action_fh [open $split_actions w]
+  puts $action_fh "# Mixed-tier net split actions"
+  puts $action_fh "# split_net_mode=disabled_pass_through"
+  puts $action_fh "INFO split_net disabled by PIN3D_SPLIT_NET_FLOW=off"
+  close $action_fh
+
+  set summary_fh [open $split_summary w]
+  puts $summary_fh "mode disabled_pass_through"
+  puts $summary_fh "candidate_nets 0"
+  puts $summary_fh "mixed_tier_nets 0"
+  puts $summary_fh "split_nets 0"
+  puts $summary_fh "skipped_nets 0"
+  puts $summary_fh "processed_residual 0"
+  puts $summary_fh "io_upper 0"
+  puts $summary_fh "io_bottom 0"
+  puts $summary_fh ""
+  puts $summary_fh "skip_reasons"
+  close $summary_fh
+}
+
+puts "INFO: split_net_mode=$split_mode PIN3D_SPLIT_NET_FLOW=[pin3d_split_net_flow_mode]"
 
 extract_cross_tier_nets [file join $LOG_DIR "split_net.after.nets"]
 
-set DEF_OUT [file join $RESULTS_DIR "2_4_floorplan_split.def"]
-set V_OUT   [file join $RESULTS_DIR "2_4_floorplan_split.v"]
-defOut -floorplan $DEF_OUT
-saveNetlist $V_OUT
-saveDesign [file join $OBJECTS_DIR "${DESIGN}_3d_after_split_net.enc"]
-fit
-dumpToGIF [file join $LOG_DIR "2_4_floorplan_split.png"]
+set split_enabled [pin3d_split_net_flow_enabled]
+handoff_write_stage_outputs $stage_paths \
+  -def_args {-floorplan} \
+  -write_def $split_enabled \
+  -write_v $split_enabled \
+  -copy_sdc 0 \
+  -save_design 1 \
+  -write_png 1 \
+  -write_manifest 1 \
+  -extra_manifest [list split_net_mode $split_mode]
 
 puts "INFO: Post-IO split-net stage done."
-puts "INFO:   DEF -> $DEF_OUT"
-puts "INFO:   Verilog -> $V_OUT"
+puts "INFO:   DEF -> [handoff_get $stage_paths def_out]"
+puts "INFO:   Verilog -> [handoff_get $stage_paths v_out]"
 exit

@@ -6,32 +6,33 @@
 # innovus_3d_pdn-only-bottom.tcl
 # Build bottom-tier PDN only.
 # ==========================================
+
+# Core setup
 source $::env(CADENCE_SCRIPTS_DIR)/utils.tcl
 source $::env(CADENCE_SCRIPTS_DIR)/lib_setup.tcl
 source $::env(CADENCE_SCRIPTS_DIR)/design_setup.tcl
+source $::env(CADENCE_SCRIPTS_DIR)/handoff_manager.tcl
+
+# Environment directories
+set LOG_DIR       [_get LOG_DIR]
+set RESULTS_DIR   [_get RESULTS_DIR]
+set REPORTS_DIR   [_get REPORTS_DIR]
+set OBJECTS_DIR   [_get OBJECTS_DIR]
+
+# Stage handoff
+set stage_name "pdn-bottom"
+# Inputs : 2_5_place_macro_bottom.def / 2_5_place_macro_bottom.v / 1_synth.sdc
+# Outputs: 2_6_floorplan_pdn_bottom.def / 2_6_floorplan_pdn_bottom.v / 1_synth.sdc
+set stage_paths [handoff_stage_paths $stage_name $RESULTS_DIR $OBJECTS_DIR $LOG_DIR]
+handoff_bind_stage_io $stage_paths
+set sdc $SDC_IN
+
+# Additional setup
 source $::env(CADENCE_SCRIPTS_DIR)/tier_cell_policy.tcl
-
-set LOG_DIR      [_get LOG_DIR]
-set RESULTS_DIR  [_get RESULTS_DIR]
-set REPORTS_DIR  [_get REPORTS_DIR]
-set OBJECTS_DIR  [_get OBJECTS_DIR]
-
-set DEF_IN [file join $RESULTS_DIR "2_5_place_macro_bottom.def"]
-set V_IN   [file join $RESULTS_DIR "2_5_place_macro_bottom.v"]
-set sdc    [file join $RESULTS_DIR "1_synth.sdc"]
-
 source $::env(CADENCE_SCRIPTS_DIR)/mmmc_setup.tcl
+handoff_log_paths $stage_paths
 
-set init_lef_file            $lefs
-set init_mmmc_file           ""
-set init_design_settop       1
-set init_top_cell            $DESIGN
-set init_verilog             $V_IN
-set init_design_netlisttype  "Verilog"
-
-init_design -setup {WC_VIEW} -hold {BC_VIEW}
-_common_setup
-defIn $DEF_IN
+handoff_init_design_from_paths $stage_paths
 
 if {[info exists ::env(BOTTOM_SITE)] && $::env(BOTTOM_SITE) ne ""} {
     rebuild_rows_for_site $::env(BOTTOM_SITE) bottom
@@ -41,10 +42,12 @@ if {[info exists ::env(BOTTOM_SITE)] && $::env(BOTTOM_SITE) ne ""} {
 
 source $::env(PLATFORM_DIR)/util/pdn_config_bottom.tcl
 
-fit
-dumpToGIF [file join $LOG_DIR "2_6_floorplan_pdn_bottom.png"]
-defOut -floorplan [file join $RESULTS_DIR "2_6_floorplan_pdn_bottom.def"]
-saveNetlist [file join $RESULTS_DIR "2_6_floorplan_pdn_bottom.v"]
+handoff_write_stage_outputs $stage_paths \
+  -def_args {-floorplan} \
+  -copy_sdc 0 \
+  -save_design 0 \
+  -write_png 1 \
+  -write_manifest 1
 
 puts "INFO: Bottom-tier PDN stage done."
 exit

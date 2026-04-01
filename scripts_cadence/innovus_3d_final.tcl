@@ -2,24 +2,36 @@
 # commands and reports are copyrighted by Cadence. We thank Cadence for
 # granting permission to share our research to help promote and foster the next
 # generation of innovators.
-# ============== Final and extract metrics (restoreDesign → extract_report -postRoute) ==============
-# ---- Common setup ----
+# ============================================================
+# innovus_3d_final.tcl
+# Final metric extraction from the routed handoff.
+# ============================================================
+
+# Core setup
 source $::env(CADENCE_SCRIPTS_DIR)/utils.tcl
 source $::env(CADENCE_SCRIPTS_DIR)/lib_setup.tcl
 source $::env(CADENCE_SCRIPTS_DIR)/design_setup.tcl
+source $::env(CADENCE_SCRIPTS_DIR)/handoff_manager.tcl
 
+# Environment directories
 set LOG_DIR       [_get LOG_DIR]
 set RESULTS_DIR   [_get RESULTS_DIR]
 set REPORTS_DIR   [_get REPORTS_DIR]
 set OBJECTS_DIR   [_get OBJECTS_DIR]
 
-# ---- Use ONLY 5_route.v / 5_route.sdc for init globals (no fallback) ----
-set V_IN   [file join $RESULTS_DIR "5_route.v"]
-set sdc  [file join $RESULTS_DIR "5_route.sdc"]
-set DEF_IN [file join $RESULTS_DIR "5_route.def"]
+# Stage handoff
+set stage_name "final"
+# Inputs : 5_route.def / 5_route.v / 5_route.sdc
+# Outputs: 6_final.png / final_metrics.csv / final_summary.txt / handoffs/final.tcl
+set stage_paths [handoff_stage_paths $stage_name $RESULTS_DIR $OBJECTS_DIR $LOG_DIR]
+handoff_bind_stage_io $stage_paths
+set sdc $SDC_IN
+
+# Additional setup
+handoff_log_paths $stage_paths
 
 if {![file exists $V_IN]}  { puts "ERROR: Missing netlist: $V_IN";  exit 1 }
-if {![file exists $sdc]} { puts "ERROR: Missing SDC:     $sdc";  exit 1 }
+if {![file exists $SDC_IN]} { puts "ERROR: Missing SDC:     $SDC_IN";  exit 1 }
 
 # init_* globals required by some Innovus builds even for restoreDesign
 if {![info exists lefs] || $lefs eq ""} {
@@ -63,20 +75,18 @@ set EXTRACT_TCL [file join $::env(CADENCE_SCRIPTS_DIR) extract_report.tcl]
 if {![file exists $EXTRACT_TCL]} { puts "ERROR: Cannot find $EXTRACT_TCL"; exit 1 }
 source $EXTRACT_TCL
 
-set CSV_PATH [file join $LOG_DIR "final_metrics.csv"]
-set SUMMARY  [file join $LOG_DIR "final_summary.txt"]
-
 set csv_line [extract_report -postRoute \
                             -outdir $LOG_DIR \
-                            -write_csv $CSV_PATH \
-                            -write_summary $SUMMARY]
+                            -write_csv $CSV_OUT \
+                            -write_summary $SUMMARY_OUT]
 
 catch { file mkdir [file join $LOG_DIR final] }
 catch { dumpPictures -dir [file join $LOG_DIR final] -prefix final }
 
-puts "INFO: Final metrics CSV -> $CSV_PATH"
-puts "INFO: Final summary     -> $SUMMARY"
+puts "INFO: Final metrics CSV -> $CSV_OUT"
+puts "INFO: Final summary     -> $SUMMARY_OUT"
 puts "INFO: timingReports/, power_Final.rpt, drc.rpt, fep.rpt are under $LOG_DIR."
+handoff_write_manifest $stage_paths -extra_kv [list csv_out $CSV_OUT summary_out $SUMMARY_OUT mode postRoute]
 
 set VISUALIZE_FINAL [_get VISUALIZE_FINAL "0"]
 if {$VISUALIZE_FINAL eq "1"} {

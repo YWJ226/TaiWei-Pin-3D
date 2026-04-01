@@ -4,27 +4,38 @@
 # generation of innovators.
 # ===============================
 # innovus_preplace.tcl
-# Floorplan init + Pin placement (editPin)
+# Floorplan initialization and pin placement.
 # ===============================
+
+# Core setup
 source $::env(CADENCE_SCRIPTS_DIR)/utils.tcl
 source $::env(CADENCE_SCRIPTS_DIR)/lib_setup.tcl
 source $::env(CADENCE_SCRIPTS_DIR)/design_setup.tcl
-# Directories and key files
+source $::env(CADENCE_SCRIPTS_DIR)/handoff_manager.tcl
+
+# Environment directories
 set LOG_DIR       [_get LOG_DIR]
 set RESULTS_DIR   [_get RESULTS_DIR]
 set REPORTS_DIR   [_get REPORTS_DIR]
-set OBJECTS_DIR  [_get OBJECTS_DIR]
-set netlist     [file join $RESULTS_DIR "1_synth.v"]
-set sdc        [file join $RESULTS_DIR "1_synth.sdc"]
+set OBJECTS_DIR   [_get OBJECTS_DIR]
+
+# Stage handoff
+set stage_name "preplace"
+# Inputs : 1_synth.v / 1_synth.sdc
+# Outputs: 2_2_floorplan_io.def / 2_2_floorplan_io.v / 1_synth.sdc / 2_2_floorplan_io.enc
+set stage_paths [handoff_stage_paths $stage_name $RESULTS_DIR $OBJECTS_DIR $LOG_DIR]
+handoff_bind_stage_io $stage_paths
+set sdc $SDC_IN
+
+# Additional setup
 source $::env(CADENCE_SCRIPTS_DIR)/mmmc_setup.tcl
+handoff_log_paths $stage_paths
 
-set util [_get CORE_UTILIZATION 70]
-
-set init_verilog "$netlist"
+set init_verilog $V_IN
 set init_design_netlisttype "Verilog"
 set init_design_settop 1
-set init_top_cell "$DESIGN"
-set init_lef_file "$lefs"
+set init_top_cell $DESIGN
+set init_lef_file $lefs
 
 # MCMM setup
 setGenerateViaMode -auto true
@@ -59,15 +70,14 @@ source $::env(CADENCE_SCRIPTS_DIR)/place_pin.tcl
 
 place_design
 
-# 6) Write out DEF/database with pins
-set DEF_PINS      [file join $RESULTS_DIR "2_2_floorplan_io.def"]
-set V_PINS       [file join $RESULTS_DIR "2_2_floorplan_io.v"]
-defOut -floorplan $DEF_PINS
-saveNetlist $V_PINS
-set DB_PINS       [file join $OBJECTS_DIR "2_2_floorplan_io.enc"]
-saveDesign $DB_PINS
+handoff_write_stage_outputs $stage_paths \
+  -def_args {-floorplan} \
+  -copy_sdc 0 \
+  -save_design 1 \
+  -write_png 1 \
+  -write_manifest 1
 
 puts "INFO: PrePlace pin placement finished."
-puts "INFO:   pins DEF      : $DEF_PINS"
-puts "INFO:   pins Verilog  : $V_PINS"
+puts "INFO:   pins DEF      : [handoff_get $stage_paths def_out]"
+puts "INFO:   pins Verilog  : [handoff_get $stage_paths v_out]"
 exit

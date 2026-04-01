@@ -21,6 +21,19 @@ if {[info exists qrc_min] && $qrc_min ne "" && [file exists $qrc_min]} {
 create_delay_corner -name WC -library_set WC_LIB -rc_corner Cmax
 create_delay_corner -name BC -library_set BC_LIB -rc_corner Cmin
 
-create_constraint_mode -name CON -sdc_file $sdc 
+set resolved_sdc ""
+if {[info exists sdc] && $sdc ne ""} {
+    set resolved_sdc $sdc
+} elseif {[info exists SDC_IN] && $SDC_IN ne ""} {
+    set resolved_sdc $SDC_IN
+}
+if {$resolved_sdc eq ""} {
+    error "MMMC setup requires a non-empty SDC path (variables 'sdc' or 'SDC_IN')."
+}
+if {![file exists $resolved_sdc]} {
+    error "MMMC setup is missing the required SDC file: $resolved_sdc"
+}
+set sdc $resolved_sdc
+create_constraint_mode -name CON -sdc_files [list $sdc]
 create_analysis_view -name WC_VIEW -delay_corner WC -constraint_mode CON
 create_analysis_view -name BC_VIEW -delay_corner BC -constraint_mode CON

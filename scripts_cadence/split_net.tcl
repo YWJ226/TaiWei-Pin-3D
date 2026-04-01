@@ -384,6 +384,7 @@ proc ::mixed_tier_split::run {} {
 
   set action_fh [open $CFG(action_file) w]
   puts $action_fh "# Mixed-tier net split actions"
+  puts $action_fh "# split_net_mode=enabled"
   puts $action_fh "# dry_run=$CFG(dry_run)"
 
   foreach net_ptr [dbGet -e top.nets] {
@@ -401,12 +402,6 @@ proc ::mixed_tier_split::run {} {
     if {$driver_obj eq ""} {
       ::mixed_tier_split::record_skip $driver_reason
       puts $action_fh "SKIP $net_name reason=$driver_reason"
-      continue
-    }
-
-    if {[regexp {[\[\]]} $net_name]} {
-      ::mixed_tier_split::record_skip "indexed_net_name_not_supported"
-      puts $action_fh "SKIP $net_name reason=indexed_net_name_not_supported"
       continue
     }
 
@@ -484,6 +479,7 @@ proc ::mixed_tier_split::run {} {
   close $action_fh
 
   set summary_fh [open $CFG(report_file) w]
+  puts $summary_fh "mode enabled"
   puts $summary_fh "candidate_nets $COUNTERS(candidate_nets)"
   puts $summary_fh "mixed_tier_nets $COUNTERS(mixed_nets)"
   puts $summary_fh "split_nets $COUNTERS(split_nets)"

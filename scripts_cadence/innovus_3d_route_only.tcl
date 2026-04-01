@@ -8,15 +8,28 @@
 # The Makefile launches this script with the route-only LEF/COVER view.
 # ============================================================
 
+# Core setup
 source $::env(CADENCE_SCRIPTS_DIR)/route_stage_common.tcl
 
-set stage_name "route-only"
-set stage_paths [route_stage_paths $stage_name $RESULTS_DIR $OBJECTS_DIR]
-set sdc [dict get $stage_paths sdc_in]
+# Environment directories
+set LOG_DIR       [_get LOG_DIR]
+set RESULTS_DIR   [_get RESULTS_DIR]
+set REPORTS_DIR   [_get REPORTS_DIR]
+set OBJECTS_DIR   [_get OBJECTS_DIR]
 
+# Stage handoff
+set stage_name "route-only"
+# Inputs : 4_cts.def / 4_cts.v / 4_cts.sdc
+# Outputs: 5_0_route.def / 5_0_route.v / 5_0_route.sdc
+set stage_paths [route_stage_paths $stage_name $RESULTS_DIR $OBJECTS_DIR]
+handoff_bind_stage_io $stage_paths
+set sdc $SDC_IN
+
+# Additional setup
 source $::env(CADENCE_SCRIPTS_DIR)/mmmc_setup.tcl
 source $::env(CADENCE_SCRIPTS_DIR)/extract_report.tcl
 source $::env(CADENCE_SCRIPTS_DIR)/cts_stage_common.tcl
+handoff_log_paths $stage_paths
 
 puts "INFO: Running staged route stage '$stage_name'."
 

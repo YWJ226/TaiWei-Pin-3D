@@ -6,44 +6,45 @@
 # innovus_placeMacro_upper.tcl
 # Place upper-tier macros only.
 # ==========================================
+
+# Core setup
 source $::env(CADENCE_SCRIPTS_DIR)/utils.tcl
 source $::env(CADENCE_SCRIPTS_DIR)/lib_setup.tcl
 source $::env(CADENCE_SCRIPTS_DIR)/design_setup.tcl
+source $::env(CADENCE_SCRIPTS_DIR)/handoff_manager.tcl
+
+# Environment directories
+set LOG_DIR       [_get LOG_DIR]
+set RESULTS_DIR   [_get RESULTS_DIR]
+set REPORTS_DIR   [_get REPORTS_DIR]
+set OBJECTS_DIR   [_get OBJECTS_DIR]
+
+# Stage handoff
+set stage_name "macro-upper"
+# Inputs : 2_4_floorplan_io.def / 2_4_floorplan_io.v / 1_synth.sdc
+# Outputs: 2_5_place_macro_upper.def / 2_5_place_macro_upper.v / 1_synth.sdc
+set stage_paths [handoff_stage_paths $stage_name $RESULTS_DIR $OBJECTS_DIR $LOG_DIR]
+handoff_bind_stage_io $stage_paths
+set sdc $SDC_IN
+
+# Additional setup
 source $::env(CADENCE_SCRIPTS_DIR)/place_macro_util.tcl
 source $::env(CADENCE_SCRIPTS_DIR)/tier_cell_policy.tcl
-
-set LOG_DIR      [_get LOG_DIR]
-set RESULTS_DIR  [_get RESULTS_DIR]
-set REPORTS_DIR  [_get REPORTS_DIR]
-set OBJECTS_DIR  [_get OBJECTS_DIR]
-
-set DEF_IN [file join $RESULTS_DIR "2_4_floorplan_split.def"]
-set V_IN   [file join $RESULTS_DIR "2_4_floorplan_split.v"]
-set sdc    [file join $RESULTS_DIR "1_synth.sdc"]
-
 source $::env(CADENCE_SCRIPTS_DIR)/mmmc_setup.tcl
+handoff_log_paths $stage_paths
 
-set init_lef_file            $lefs
-set init_mmmc_file           ""
-set init_design_settop       1
-set init_top_cell            $DESIGN
-set init_verilog             $V_IN
-set init_design_netlisttype  "Verilog"
-
-init_design -setup {WC_VIEW} -hold {BC_VIEW}
-_common_setup
-
-defIn $DEF_IN
+handoff_init_design_from_paths $stage_paths
 
 apply_tier_policy upper -fixlib 1
 lassign [pmu::_get_halos] halo_x halo_y
 catch { pmu::run_tier_macro_place upper $halo_x $halo_y }
 
-set DEF_OUT [file join $RESULTS_DIR "2_5_place_macro_upper.def"]
-set V_OUT   [file join $RESULTS_DIR "2_5_place_macro_upper.v"]
-set PNG_OUT [file join $LOG_DIR "2_5_place_macro_upper.png"]
-
-pmu::save_stage $DEF_OUT $V_OUT $PNG_OUT
+handoff_write_stage_outputs $stage_paths \
+  -def_args {-floorplan} \
+  -copy_sdc 0 \
+  -save_design 0 \
+  -write_png 1 \
+  -write_manifest 1
 
 puts "INFO: Upper macro placement done."
 exit

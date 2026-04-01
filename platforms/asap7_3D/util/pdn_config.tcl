@@ -169,8 +169,6 @@ setAddStripeMode -route_over_rows_only false
 
 # Own global nets in this script
 clearGlobalNets
-win
-suspend
 rebuild_rows_for_site $::env(PLACE_SITE) bottom
 
 # Part 1: Bottom tier (M1/M2 rails + M3 vertical + M6 horizontal)
