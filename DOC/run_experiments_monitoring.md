@@ -1,7 +1,7 @@
 # run_experiments Monitoring and Job Management
 
-This guide describes how to inspect, monitor, and terminate jobs launched by
-`run_experiments.py`.
+This guide describes how to submit, inspect, monitor, and terminate jobs
+launched by `run_experiments.py`.
 
 ## Model
 
@@ -10,28 +10,31 @@ The launcher uses two layers of metadata:
 - `run_logs/status/*.json`
   - One file per `(flow, tech, case)`.
   - This is the user-facing task status.
+  - It stores the exact `dispatch_job_id` of the current submission.
 - `run_logs/dispatch/<flow>/<tech>/<case>/`
   - Remote host dispatch metadata.
-  - Each remote stage creates:
+  - Each detached remote task creates:
     - `*.wrapper.sh`
     - `*.state`
+    - `*.phase`
     - `*.rc`
     - `*.pid`
 
 For remote jobs, the monitor reads both:
 
 - the status JSON
-- the latest dispatch state for the current task
+- the exact remote dispatch job bound in that status JSON
 
 This lets the script detect:
 
 - `starting`
+- `queued`
 - `running`
 - `ok`
 - `failed`
 - stale dispatch files where the recorded pid is already gone
 
-## Start Jobs
+## Submit Jobs
 
 Example:
 
@@ -41,15 +44,20 @@ python run_experiments.py \
   --host-list {hnode01,hnode02,hnode03,hnode04}
 ```
 
+When `--host-list` is used, the launcher now submits detached remote task
+wrappers and exits immediately. It behaves more like `bsub` than a persistent
+local scheduler.
+
 Local mode still works:
 
 ```bash
 python run_experiments.py --flow cds --jobs 4
 ```
 
-## Show Current Status Once
+## Show Current Active Status Once
 
 This synchronizes task status with dispatch metadata and prints one snapshot.
+By default it only prints active tasks.
 
 ```bash
 python run_experiments.py --flow cds --show-status
@@ -59,6 +67,12 @@ You can narrow the scope:
 
 ```bash
 python run_experiments.py --flow cds --tech nangate45_3D --case gcd --show-status
+```
+
+To also print terminal tasks:
+
+```bash
+python run_experiments.py --flow cds --show-status --all-status
 ```
 
 ## Monitor Until Done
@@ -97,11 +111,20 @@ python run_experiments.py \
   --kill-running
 ```
 
+## Kill by Job ID
+
+`--show-status` prints the exact dispatch `job=` id. You can kill one specific
+job directly with:
+
+```bash
+python run_experiments.py --flow cds --kill-job task.12345.1775140000000
+```
+
 ## Notes
 
 - Management commands do not need `--host-list`.
-- In management mode, the script uses the existing status JSON and dispatch
-  files to locate the job host and dispatch pid.
+- In management mode, the script uses the existing status JSON and bound
+  `dispatch_job_id` to locate the exact remote wrapper.
 - Remote kill uses the recorded remote process group from `*.pid`.
 - Local kill uses the recorded local launcher pid from the status JSON.
 - `--host-list` is ignored in management mode by design.
@@ -111,13 +134,14 @@ python run_experiments.py \
 Typical detail lines look like:
 
 ```text
-[TASK] hnode10 cds/nangate45_3D/jpeg status=running phase=run dispatch=run:running dispatch_pid=123456 dispatch_pid_alive=True
+[TASK] hnode10 cds/nangate45_3D/jpeg status=running phase=run job=task.12345.1775140000000 dispatch=running dispatch_pid=123456 dispatch_pid_alive=True
 ```
 
 Meaning:
 
 - `status` / `phase`: current synchronized task status
-- `dispatch=run:running`: latest remote stage and its dispatch state
+- `job=...`: exact dispatch wrapper bound to this task
+- `dispatch=...`: current remote dispatch state
 - `dispatch_pid`: recorded remote wrapper pid / process group leader
 - `dispatch_pid_alive`: whether that recorded remote pid still exists
 

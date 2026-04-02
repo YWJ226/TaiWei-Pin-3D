@@ -5,18 +5,18 @@ load_design 3_2_place_iop.odb 2_floorplan.sdc "Starting global placement"
 set_dont_use $::env(DONT_USE_CELLS)
 
 # set fastroute layer reduction
-if {[info exist env(FASTROUTE_TCL)]} {
+if {[info exists env(FASTROUTE_TCL)]} {
   source $env(FASTROUTE_TCL)
 } else {
   set_global_routing_layer_adjustment $env(MIN_ROUTING_LAYER)-$env(MAX_ROUTING_LAYER) 0.5
   set_routing_layers -signal $env(MIN_ROUTING_LAYER)-$env(MAX_ROUTING_LAYER)
-  if {[info exist env(MACRO_EXTENSION)]} {
+  if {[info exists env(MACRO_EXTENSION)]} {
     set_macro_extension $env(MACRO_EXTENSION)
   }
 }
 
 # check the lower boundary of the PLACE_DENSITY and add PLACE_DENSITY_LB_ADDON if it exists
-if {[info exist ::env(PLACE_DENSITY_LB_ADDON)]} {
+if {[info exists ::env(PLACE_DENSITY_LB_ADDON)]} {
   set place_density_lb [gpl::get_global_placement_uniform_density \
   -pad_left $::env(CELL_PAD_IN_SITES_GLOBAL_PLACEMENT) \
   -pad_right $::env(CELL_PAD_IN_SITES_GLOBAL_PLACEMENT)]

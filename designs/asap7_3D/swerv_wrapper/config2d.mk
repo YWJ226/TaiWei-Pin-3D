@@ -4,6 +4,9 @@ export PLATFORM    = asap7
 export VERILOG_FILES = $(DESIGN_HOME)/src/swerv/swerv_wrapper.sv2v.v \
                        $(DESIGN_HOME)/asap7_3D/swerv_wrapper/macros.v
 export SDC_FILE      = $(DESIGN_HOME)/asap7_3D/swerv_wrapper/constraint.sdc
+# This design already defines OPENROAD_CLKGATE in macros.v.
+# Skip the platform clock-gate stub to avoid Yosys redefinition.
+override export CLKGATE_MAP_FILE :=
 
 export ADDITIONAL_LEFS = $(sort $(wildcard $(PLATFORM_DIR)/lef/fakeram/*.lef))
 export ADDITIONAL_LIBS = $(sort $(wildcard $(PLATFORM_DIR)/lib/NLDM/fakeram/*.lib))

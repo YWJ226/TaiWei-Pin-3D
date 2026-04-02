@@ -1,49 +1,63 @@
-utl::set_metrics_stage "detailedroute__{}"
+# ============================================================
+# detail_route.tcl
+# Run the OpenROAD detailed routing stage.
+# ============================================================
+
+# Core setup
 source $::env(OPENROAD_SCRIPTS_DIR)/load.tcl
 source $::env(OPENROAD_SCRIPTS_DIR)/util.tcl
-load_design 5_1_grt.odb 5_1_grt.sdc "Start detailed route"
-if { ![grt::have_routes] } {
-  error "Global routing failed, run `make gui_grt` and load $::global_route_congestion_report \
-        in DRC viewer to view congestion"
+source $::env(OPENROAD_SCRIPTS_DIR)/handoff_manager.tcl
+
+# Environment directories
+set LOG_DIR       [_get LOG_DIR]
+set RESULTS_DIR   [_get RESULTS_DIR]
+set REPORTS_DIR   [_get REPORTS_DIR]
+set OBJECTS_DIR   [_get OBJECTS_DIR]
+
+# Stage handoff
+set stage_name "route-detail"
+# Inputs : 5_1_grt.odb / 5_1_grt.sdc
+# Outputs: 5_route.def / 5_route.v / 5_route.sdc / 5_route.odb
+set stage_paths [handoff_stage_paths $stage_name $RESULTS_DIR $OBJECTS_DIR $LOG_DIR]
+handoff_bind_stage_io $stage_paths
+
+# Additional setup
+handoff_log_paths $stage_paths
+utl::set_metrics_stage "detailedroute__{}"
+load_design $ODB_IN $SDC_IN "Start detailed route"
+source $::env(OPENROAD_SCRIPTS_DIR)/placement_utils.tcl
+set before_report [file join $LOG_DIR "5_route.before.nets"]
+set after_report [file join $LOG_DIR "5_route.after.nets"]
+set summary_report [file join $LOG_DIR "5_route.cross_tier.summary.rpt"]
+set clock_before_report [file join $LOG_DIR "5_route.clock.before.nets"]
+set clock_after_report [file join $LOG_DIR "5_route.clock.after.nets"]
+set clock_summary_report [file join $LOG_DIR "5_route.clock.cross_tier.summary.rpt"]
+apply_tier_policy [or_cts_owner_tier] -fixlib 1 -allow_net all 
+report_cross_tier_snapshot $before_report -label "route before"
+report_cross_tier_snapshot $clock_before_report -label "route clock before" -clock_only 1
+
+if {![grt::have_routes]} {
+  error "Global routing failed, run `make gui_grt` and inspect $::global_route_congestion_report"
 }
 
 set_propagated_clock [all_clocks]
 
 set additional_args ""
-if { ![info exists ::env(OR_K)] } {
+if {![info exists ::env(OR_K)]} {
   set ::env(OR_K) 1.0
 }
-# if { ![info exists ::env(REPAIR_PDN_VIA_LAYER)] } {
-#   set ::env(REPAIR_PDN_VIA_LAYER) 1
-# }
-if { ![info exists ::env(DETAILED_ROUTE_END_ITERATION)] } {
+if {![info exists ::env(DETAILED_ROUTE_END_ITERATION)]} {
   set ::env(DETAILED_ROUTE_END_ITERATION) 20
 }
 append_env_var additional_args DB_PROCESS_NODE -db_process_node 1
 append_env_var additional_args OR_K -or_k 1
-# append_env_var additional_args REPAIR_PDN_VIA_LAYER -repair_pdn_vias 1
 append_env_var additional_args DETAILED_ROUTE_END_ITERATION -droute_end_iter 1
 append additional_args " -verbose 1 -no_pin_access"
-
-# DETAILED_ROUTE_ARGS is used when debugging detailed, route, e.g. append
-# "-droute_end_iter 5" to look at routing violations after only 5 iterations,
-# speeding up iterations on a problem where detailed routing doesn't converge
-# or converges slower than expected.
-#
-# If DETAILED_ROUTE_ARGS is not specified, save out progress report a
-# few iterations after the first two iterations. The first couple of
-# iterations would produce very large .drc reports without interesting
-# information for the user.
-#
-# The idea is to have a policy that gives progress information soon without
-# having to go spelunking in Tcl or modify configuration scripts, while
-# not having to wait too long or generating large useless reports.
 
 set arguments [expr {
   [env_var_exists_and_non_empty DETAILED_ROUTE_ARGS] ? $::env(DETAILED_ROUTE_ARGS) :
   [concat $additional_args {-drc_report_iter_step 5}]
 }]
-
 puts "Detailed route arguments: $arguments"
 
 set all_args [concat [list \
@@ -58,10 +72,10 @@ if {
   [env_var_exists_and_non_empty MAX_REPAIR_ANTENNAS_ITER_DRT]
 } {
   set repair_antennas_iters 1
-  if { [repair_antennas] } {
+  if {[repair_antennas]} {
     detailed_route {*}$all_args
   }
-  while { [check_antennas] && $repair_antennas_iters < $::env(MAX_REPAIR_ANTENNAS_ITER_DRT) } {
+  while {[check_antennas] && $repair_antennas_iters < $::env(MAX_REPAIR_ANTENNAS_ITER_DRT)} {
     repair_antennas
     detailed_route {*}$all_args
     incr repair_antennas_iters
@@ -71,16 +85,20 @@ if {
 }
 
 source_env_var_if_exists POST_DETAIL_ROUTE_TCL
-
 check_antennas -report_file $env(REPORTS_DIR)/drt_antennas.log
 
-if { ![design_is_routed] } {
+if {![design_is_routed]} {
   error "Design has unrouted nets."
 }
 
-# report_metrics 5 "detailed route"
-write_db $::env(RESULTS_DIR)/5_2_route.odb
-write_def $::env(RESULTS_DIR)/5_route.def
-write_verilog $::env(RESULTS_DIR)/5_route.v
+report_cross_tier_transition $summary_report $before_report $after_report -label "route"
+report_cross_tier_transition $clock_summary_report $clock_before_report $clock_after_report -label "route clock" -clock_only 1
+
+handoff_write_stage_outputs $stage_paths \
+  -write_db 1 \
+  -write_def 1 \
+  -write_verilog 1 \
+  -write_sdc 1 \
+  -write_manifest 1
 
 exit

@@ -6,7 +6,7 @@
 export PROCESS ?= 45
 export PLATFORM = asap7_nangate45_3D
 # -------- Tech / Libs --------
-ifeq ($(USE_FLOW),openroad)
+ifneq (,$(filter $(USE_FLOW),openroad OpenROAD))
   export TECH_LEF  ?= $(PLATFORM_DIR)/lef/asap7_nangate45_2A6M10M.lef
   export RCX_RULES         ?= $(PLATFORM_DIR)/asap7_nangate45_2A6M10M.rcx_patterns.rules
   export SET_RC_TCL               ?= $(PLATFORM_DIR)/setRC_2A6M10M.tcl
@@ -82,6 +82,8 @@ export HBT_MAX_CORE_UTILIZATION ?= 0.8
 
 # PDN / Endcap / Welltie（3D 策略）
 export PDN_TCL      ?= $(PLATFORM_DIR)/openRoad/pdn/grid_strategy-3D.tcl
+export PDN_TCL_BOTTOM ?= $(PLATFORM_DIR)/openRoad/pdn/grid_strategy-3D.bottom.tcl
+export PDN_TCL_UPPER  ?= $(PLATFORM_DIR)/openRoad/pdn/grid_strategy-3D.upper.tcl
 export TAPCELL_TCL  ?= $(PLATFORM_DIR)/tapcell.tcl
 export TAP_CELL_NAME = TAPCELL_ASAP7_75t_R_bottom
 export MAKE_TRACKS       ?= $(PLATFORM_DIR)/openRoad/make_tracks.6M10M.tcl

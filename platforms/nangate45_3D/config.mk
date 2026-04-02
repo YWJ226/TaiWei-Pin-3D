@@ -6,7 +6,7 @@
 export PROCESS = 45
 
 # -------- Tech / Libs --------
-ifeq ($(USE_FLOW),openroad)
+ifneq (,$(filter $(USE_FLOW),openroad OpenROAD))
   export TECH_LEF ?= $(PLATFORM_DIR)/lef/NangateOpenCellLibrary.tech21.lef
   export RCX_RULES         ?= $(PLATFORM_DIR)/NangateOpenCellLibrary.tech21.rcx_patterns.rules
   export SET_RC_TCL  ?= $(PLATFORM_DIR)/setRC.tech21.tcl
@@ -79,6 +79,8 @@ export HBT_MAX_CORE_UTILIZATION ?= 0.8
 export MAKE_TRACKS ?= $(PLATFORM_DIR)/make_tracks.tcl
 # PDN / Endcap / Welltie (based on Cadence)
 export PDN_TCL      ?= $(PLATFORM_DIR)/grid_strategy-M1-M4-M7.tcl
+export PDN_TCL_BOTTOM ?= $(PLATFORM_DIR)/grid_strategy-M1-M4-M7.bottom.tcl
+export PDN_TCL_UPPER  ?= $(PLATFORM_DIR)/grid_strategy-M1-M4-M7.upper.tcl
 export TAPCELL_TCL  ?= $(PLATFORM_DIR)/tapcell.tcl
 export TAP_CELL_NAME = TAPCELL_X1_bottom
 

@@ -194,46 +194,82 @@ def print_status_summary(tasks: Sequence[RunConfig]) -> None:
 def print_status_summary_from_payloads(payloads: Sequence[Dict[str, object]]
                                        ) -> None:
     counts: Dict[str, int] = {}
-    active = []
     for payload in payloads:
         status = str(payload.get("status", "unknown"))
         counts[status] = counts.get(status, 0) + 1
-        if status == "running":
-            active.append(payload)
 
     ordered = []
     for key in ("queued", "running", "ok", "failed", "unknown"):
         if counts.get(key):
             ordered.append(f"{key}={counts[key]}")
     print(f"[STATUS] {' '.join(ordered)}")
-    for payload in active[:12]:
+
+
+def _active_payloads(payloads: Sequence[Dict[str, object]]
+                     ) -> List[Dict[str, object]]:
+    return [
+        payload for payload in payloads
+        if str(payload.get("status", "unknown")) in ("queued", "running")
+    ]
+
+
+def print_status_details(payloads: Sequence[Dict[str, object]],
+                         *,
+                         only_active: bool = False) -> None:
+    items = _active_payloads(payloads) if only_active else list(payloads)
+    if not items:
+        return
+
+    rows = []
+    for payload in items:
+        rows.append({
+            "host": str(payload.get("target_host", "localhost")),
+            "task": f"{payload.get('flow')}/{payload.get('tech')}/{payload.get('case')}",
+            "status": str(payload.get("status", "")),
+            "phase": str(payload.get("phase", "")),
+            "dispatch": str(payload.get("dispatch_state", "")) or "-",
+            "job": str(payload.get("dispatch_job_id", "")) or "-",
+            "pid": str(payload.get("dispatch_pid", "")) if payload.get("dispatch_pid") is not None else "-",
+            "alive": str(payload.get("dispatch_pid_alive", "")) if payload.get("dispatch_pid_alive") is not None else "-",
+        })
+
+    widths = {
+        "host": max(len("HOST"), max(len(row["host"]) for row in rows)),
+        "task": max(len("TASK"), max(len(row["task"]) for row in rows)),
+        "status": max(len("STATUS"), max(len(row["status"]) for row in rows)),
+        "phase": max(len("PHASE"), max(len(row["phase"]) for row in rows)),
+        "dispatch": max(len("DISPATCH"), max(len(row["dispatch"]) for row in rows)),
+        "job": max(len("JOB"), max(len(row["job"]) for row in rows)),
+        "pid": max(len("PID"), max(len(row["pid"]) for row in rows)),
+        "alive": max(len("ALIVE"), max(len(row["alive"]) for row in rows)),
+    }
+
+    header = (
+        f"[TASK] "
+        f"{'HOST':<{widths['host']}} "
+        f"{'TASK':<{widths['task']}} "
+        f"{'STATUS':<{widths['status']}} "
+        f"{'PHASE':<{widths['phase']}} "
+        f"{'DISPATCH':<{widths['dispatch']}} "
+        f"{'JOB':<{widths['job']}} "
+        f"{'PID':>{widths['pid']}} "
+        f"{'ALIVE':<{widths['alive']}}"
+    )
+    print(header)
+    print("[TASK] " + "-" * max(0, len(header) - len("[TASK] ")))
+
+    for row in rows:
         print(
-            "[STATUS] "
-            f"{payload.get('target_host')} "
-            f"{payload.get('flow')}/{payload.get('tech')}/{payload.get('case')} "
-            f"phase={payload.get('phase')} "
-            f"updated_at={payload.get('updated_at')}"
+            f"[TASK] "
+            f"{row['host']:<{widths['host']}} "
+            f"{row['task']:<{widths['task']}} "
+            f"{row['status']:<{widths['status']}} "
+            f"{row['phase']:<{widths['phase']}} "
+            f"{row['dispatch']:<{widths['dispatch']}} "
+            f"{row['job']:<{widths['job']}} "
+            f"{row['pid']:>{widths['pid']}} "
+            f"{row['alive']:<{widths['alive']}}"
         )
-
-
-def print_status_details(payloads: Sequence[Dict[str, object]]) -> None:
-    for payload in payloads:
-        parts = [
-            f"{payload.get('target_host', 'localhost')}",
-            f"{payload.get('flow')}/{payload.get('tech')}/{payload.get('case')}",
-            f"status={payload.get('status')}",
-            f"phase={payload.get('phase')}",
-        ]
-        if payload.get("dispatch_job_id"):
-            parts.append(
-                f"dispatch={payload.get('dispatch_stage')}:{payload.get('dispatch_state')}"
-            )
-        if payload.get("dispatch_pid") is not None:
-            parts.append(f"dispatch_pid={payload.get('dispatch_pid')}")
-        if payload.get("dispatch_pid_alive") is not None:
-            parts.append(
-                f"dispatch_pid_alive={payload.get('dispatch_pid_alive')}")
-        print("[TASK] " + " ".join(parts))
 
 
 def _status_host_from_payload(payload: Dict[str, object]) -> Optional[str]:
@@ -258,13 +294,13 @@ def _local_pid_alive(pid: int) -> bool:
 
 
 def _dispatch_metadata(cfg: RunConfig,
-                       dispatch_stage: str,
                        snapshot: remote.RemoteLaunchSnapshot) -> Dict[str, object]:
     return {
         "dispatch_dir": str(_dispatch_dir(cfg)),
         "dispatch_job_id": snapshot.launch.job_id,
-        "dispatch_stage": dispatch_stage,
+        "dispatch_stage": snapshot.launch.stage,
         "dispatch_state": snapshot.state,
+        "dispatch_phase": snapshot.phase,
         "dispatch_rc": snapshot.rc,
         "dispatch_pid": snapshot.pid,
         "dispatch_pid_alive": snapshot.pid_alive,
@@ -280,25 +316,32 @@ def sync_task_status(cfg: RunConfig) -> Dict[str, object]:
 
     if host:
         dispatch_dir = _dispatch_dir(cfg)
-        preferred_stage = phase if phase in ("run", "eval") else None
         launch = None
-        if preferred_stage:
-            launch = remote.latest_remote_launch(dispatch_dir,
-                                                stage=preferred_stage)
-        if launch is None:
-            launch = remote.latest_remote_launch(dispatch_dir, stage="eval")
-        if launch is None:
-            launch = remote.latest_remote_launch(dispatch_dir, stage="run")
+        dispatch_job_id = str(payload.get("dispatch_job_id", "")).strip()
+        if dispatch_job_id:
+            launch = remote.launch_from_job_id(dispatch_dir, dispatch_job_id)
+        else:
+            preferred_stage = phase if phase in ("run", "eval") else None
+            if preferred_stage:
+                launch = remote.latest_remote_launch(dispatch_dir,
+                                                    stage=preferred_stage)
+            if launch is None:
+                launch = remote.latest_remote_launch(dispatch_dir, stage="task")
+            if launch is None:
+                launch = remote.latest_remote_launch(dispatch_dir, stage="eval")
+            if launch is None:
+                launch = remote.latest_remote_launch(dispatch_dir, stage="run")
 
         if launch is not None:
             snapshot = remote.snapshot_remote_launch(host, launch)
-            extra = _dispatch_metadata(cfg, launch.stage, snapshot)
+            dispatch_phase = snapshot.phase or launch.stage or phase
+            extra = _dispatch_metadata(cfg, snapshot)
             if snapshot.state in ("starting", "running"):
                 if snapshot.pid_alive is False:
                     write_task_status(
                         cfg,
                         status="failed",
-                        phase=launch.stage,
+                        phase=dispatch_phase,
                         message=
                         "[monitor] dispatch says running, but remote pid is gone",
                         pid=int(payload.get("pid"))
@@ -307,10 +350,11 @@ def sync_task_status(cfg: RunConfig) -> Dict[str, object]:
                         target_host=target_host,
                     )
                 else:
+                    running_status = "queued" if snapshot.state == "starting" else "running"
                     write_task_status(
                         cfg,
-                        status="running",
-                        phase=launch.stage,
+                        status=running_status,
+                        phase=dispatch_phase,
                         message=str(payload.get("message", "")),
                         pid=int(payload.get("pid"))
                         if str(payload.get("pid", "")).isdigit() else None,
@@ -320,11 +364,11 @@ def sync_task_status(cfg: RunConfig) -> Dict[str, object]:
             elif snapshot.state == "failed":
                 msg = str(payload.get("message", ""))
                 if not msg or "[manual]" not in msg:
-                    msg = f"[monitor] remote {launch.stage} failed"
+                    msg = f"[monitor] remote {dispatch_phase} failed"
                 write_task_status(
                     cfg,
                     status="failed",
-                    phase=launch.stage,
+                    phase=dispatch_phase,
                     message=msg,
                     pid=int(payload.get("pid"))
                     if str(payload.get("pid", "")).isdigit() else None,
@@ -332,29 +376,16 @@ def sync_task_status(cfg: RunConfig) -> Dict[str, object]:
                     target_host=target_host,
                 )
             elif snapshot.state == "ok":
-                if launch.stage == "eval" or not cfg.do_eval:
-                    write_task_status(
-                        cfg,
-                        status="ok",
-                        phase="done",
-                        message=str(payload.get("message", "")),
-                        pid=int(payload.get("pid"))
-                        if str(payload.get("pid", "")).isdigit() else None,
-                        extra=extra,
-                        target_host=target_host,
-                    )
-                else:
-                    write_task_status(
-                        cfg,
-                        status="running",
-                        phase="eval" if cfg.do_eval else "done",
-                        message=
-                        "[monitor] run stage completed, waiting for eval dispatch",
-                        pid=int(payload.get("pid"))
-                        if str(payload.get("pid", "")).isdigit() else None,
-                        extra=extra,
-                        target_host=target_host,
-                    )
+                write_task_status(
+                    cfg,
+                    status="ok",
+                    phase="done",
+                    message=str(payload.get("message", "")),
+                    pid=int(payload.get("pid"))
+                    if str(payload.get("pid", "")).isdigit() else None,
+                    extra=extra,
+                    target_host=target_host,
+                )
             return read_task_status(cfg)
 
     pid_text = str(payload.get("pid", "")).strip()
@@ -415,12 +446,18 @@ def kill_task(cfg: RunConfig) -> bool:
     dispatch_dir = _dispatch_dir(cfg)
     launch = None
     if host:
-        stage = str(payload.get("dispatch_stage", "")).strip() or None
-        launch = remote.latest_remote_launch(dispatch_dir, stage=stage)
-        if launch is None:
-            launch = remote.latest_remote_launch(dispatch_dir, stage="eval")
-        if launch is None:
-            launch = remote.latest_remote_launch(dispatch_dir, stage="run")
+        dispatch_job_id = str(payload.get("dispatch_job_id", "")).strip()
+        if dispatch_job_id:
+            launch = remote.launch_from_job_id(dispatch_dir, dispatch_job_id)
+        else:
+            stage = str(payload.get("dispatch_stage", "")).strip() or None
+            launch = remote.latest_remote_launch(dispatch_dir, stage=stage)
+            if launch is None:
+                launch = remote.latest_remote_launch(dispatch_dir, stage="task")
+            if launch is None:
+                launch = remote.latest_remote_launch(dispatch_dir, stage="eval")
+            if launch is None:
+                launch = remote.latest_remote_launch(dispatch_dir, stage="run")
 
     if host and launch is not None:
         killed = remote.kill_remote_launch(host, launch, rc=143)
@@ -436,12 +473,86 @@ def kill_task(cfg: RunConfig) -> bool:
         if str(payload.get("pid", "")).isdigit() else None,
         extra={
             "dispatch_dir": str(_dispatch_dir(cfg)),
+            "dispatch_job_id": payload.get("dispatch_job_id"),
+            "dispatch_stage": payload.get("dispatch_stage"),
+            "dispatch_state": "failed",
+            "dispatch_phase": payload.get("dispatch_phase",
+                                          payload.get("phase", "unknown")),
+            "dispatch_rc": 143,
+            "dispatch_pid": payload.get("dispatch_pid"),
+            "dispatch_pid_alive": False,
             "manual_kill": True,
             "manual_kill_ok": killed,
         },
         target_host=target_host,
     )
     return killed
+
+
+def submit_one(cfg: RunConfig) -> str:
+    _load_env_from_script(cfg.repo_root / "env.sh")
+    run_script, eval_script = _script_paths(cfg.repo_root, cfg.flow, cfg.tech,
+                                            cfg.case)
+    run_log, eval_log = _log_paths(cfg.flow, cfg.tech, cfg.case)
+    exec_host = _target_label(cfg)
+
+    if not cfg.host:
+        return f"[submit] ERROR: host is required for detached submission: {cfg.flow}/{cfg.tech}/{cfg.case}"
+    if cfg.do_run and not run_script.exists():
+        return f"[submit] ERROR: run.sh not found: {run_script}"
+    if cfg.do_eval and not eval_script.exists():
+        return f"[submit] ERROR: eval.sh not found: {eval_script}"
+
+    current = sync_task_status(cfg)
+    active_status = str(current.get("status", "unknown"))
+    has_live_binding = bool(str(current.get("dispatch_job_id", "")).strip())
+    if str(current.get("pid", "")).isdigit() and active_status in ("queued",
+                                                                   "running"):
+        has_live_binding = True
+    if active_status in ("queued", "running") and has_live_binding:
+        return (
+            f"[submit] SKIP: active job already exists for "
+            f"{cfg.flow}/{cfg.tech}/{cfg.case} "
+            f"job={current.get('dispatch_job_id', '')}"
+        )
+
+    launch = remote.submit_remote_task(
+        repo_root=cfg.repo_root,
+        host=cfg.host,
+        dispatch_dir=_dispatch_dir(cfg),
+        run_script=run_script,
+        eval_script=eval_script,
+        run_log=run_log,
+        eval_log=eval_log,
+        do_run=cfg.do_run,
+        do_eval=cfg.do_eval,
+    )
+    snapshot = remote.snapshot_remote_launch(cfg.host, launch)
+    deadline = time.time() + 3
+    while time.time() < deadline and not snapshot.state:
+        time.sleep(0.2)
+        snapshot = remote.snapshot_remote_launch(cfg.host, launch)
+    if snapshot.state == "failed":
+        status = "failed"
+    elif snapshot.state == "ok":
+        status = "ok"
+    elif snapshot.state == "starting":
+        status = "queued"
+    else:
+        status = "running"
+    phase = snapshot.phase or "starting"
+    write_task_status(
+        cfg,
+        status=status,
+        phase=phase,
+        message="[dispatch] submitted detached remote task",
+        extra=_dispatch_metadata(cfg, snapshot),
+        target_host=exec_host,
+    )
+    return (
+        f"[submit] {exec_host} {cfg.flow}/{cfg.tech}/{cfg.case} "
+        f"job={launch.job_id} status={status} phase={phase}"
+    )
 
 
 def _run_task_script(
@@ -786,6 +897,12 @@ def parse_args(default_repo_root: Optional[str], ) -> argparse.Namespace:
         action="store_true",
         help="Terminate matched running or queued tasks, then exit.",
     )
+    action_group.add_argument(
+        "--kill-job",
+        action="append",
+        default=[],
+        help="Terminate the specified dispatch job id(s), then exit.",
+    )
     p.add_argument(
         "--num-shards",
         type=int,
@@ -814,6 +931,11 @@ def parse_args(default_repo_root: Optional[str], ) -> argparse.Namespace:
         "--repo-root",
         default=default_repo_root,
         help="Local repo root path (default: env FLOW_HOME or script parent).",
+    )
+    p.add_argument(
+        "--all-status",
+        action="store_true",
+        help="In --show-status/--monitor, print terminal tasks too.",
     )
     return p.parse_args()
 
@@ -874,7 +996,10 @@ def main() -> int:
     tasks = shard_tasks(tasks, args.num_shards, args.shard_index)
 
     hosts: List[str] = []
-    management_mode = args.show_status or args.monitor or args.kill_running
+    management_mode = (
+        args.show_status or args.monitor or args.kill_running
+        or bool(args.kill_job)
+    )
 
     if args.host_list and not management_mode:
         hosts = parse_host_list(args.host_list)
@@ -917,18 +1042,43 @@ def main() -> int:
     if args.show_status:
         payloads = collect_task_statuses(tasks, sync=True)
         print_status_summary_from_payloads(payloads)
-        print_status_details(payloads)
+        print_status_details(payloads, only_active=not args.all_status)
         return 0
 
     if args.monitor:
         while True:
             payloads = collect_task_statuses(tasks, sync=True)
             print_status_summary_from_payloads(payloads)
-            print_status_details(payloads)
+            print_status_details(payloads, only_active=not args.all_status)
             if all(_status_has_terminal_state(p) for p in payloads):
                 print("[MAIN] Monitor completed: all matched tasks are terminal.")
                 return 0
             time.sleep(args.status_interval)
+
+    if args.kill_job:
+        payloads = collect_task_statuses(tasks, sync=True)
+        job_to_task = {}
+        for task, payload in zip(tasks, payloads):
+            job_id = str(payload.get("dispatch_job_id", "")).strip()
+            if job_id:
+                job_to_task[job_id] = task
+        killed = 0
+        missing = 0
+        for job_id in args.kill_job:
+            task = job_to_task.get(job_id)
+            if task is None:
+                print(f"[MAIN] kill_job: no matched active task for job={job_id}")
+                missing += 1
+                continue
+            if kill_task(task):
+                killed += 1
+            else:
+                missing += 1
+        payloads = collect_task_statuses(tasks, sync=True)
+        print_status_summary_from_payloads(payloads)
+        print_status_details(payloads, only_active=not args.all_status)
+        print(f"[MAIN] kill_job: killed={killed} missing_or_terminal={missing}")
+        return 0
 
     if args.kill_running:
         payloads = collect_task_statuses(tasks, sync=True)
@@ -945,58 +1095,35 @@ def main() -> int:
                 skipped += 1
         payloads = collect_task_statuses(tasks, sync=True)
         print_status_summary_from_payloads(payloads)
-        print_status_details(payloads)
+        print_status_details(payloads, only_active=not args.all_status)
         print(f"[MAIN] kill_running: killed={killed} skipped={skipped}")
         return 0
 
-    init_task_statuses(tasks)
     print(f"[MAIN] live status files under {_status_dir(repo_root)}")
 
     # Run
     if hosts:
-        executor: Optional[ThreadPoolExecutor] = None
-        fast_shutdown = False
-        host_batches = build_host_batches(tasks)
-        if not host_batches:
+        capacity = len(hosts) * args.max_jobs_per_host
+        if len(tasks) > capacity:
             print(
-                "[MAIN] ERROR: host dispatch is enabled but no host batches were built.",
+                f"[MAIN] ERROR: detached host dispatch currently requires total_tasks <= host_count*max_jobs_per_host ({len(tasks)} > {capacity}). Use filters or shards.",
                 file=sys.stderr,
             )
             return 2
-        try:
-            executor = ThreadPoolExecutor(max_workers=len(host_batches))
-            futures = [
-                executor.submit(run_host_batch, host, host_slot, batch)
-                for host, host_slot, batch in host_batches
-            ]
-            pending = set(futures)
-            while pending:
-                done, pending = wait(pending,
-                                     timeout=args.status_interval,
-                                     return_when=FIRST_COMPLETED)
-                print_status_summary_from_payloads(
-                    collect_task_statuses(tasks, sync=True))
-                for fut in done:
-                    _ = fut.result()
-        except KeyboardInterrupt:
-            print("[MAIN] KeyboardInterrupt received, shutting down...")
-            remote.terminate_active_procs()
-            mark_interrupted_tasks(tasks)
-            fast_shutdown = True
-            if executor is not None:
-                try:
-                    executor.shutdown(wait=False, cancel_futures=True)
-                except Exception:
-                    pass
-            return 130
-        finally:
-            if executor is not None:
-                try:
-                    executor.shutdown(wait=not fast_shutdown,
-                                      cancel_futures=fast_shutdown)
-                except Exception:
-                    pass
+        submitted = 0
+        for task in tasks:
+            msg = submit_one(task)
+            print(msg)
+            if msg.startswith("[submit] ") and " job=" in msg and " SKIP:" not in msg:
+                submitted += 1
+        payloads = collect_task_statuses(tasks, sync=True)
+        print_status_summary_from_payloads(payloads)
+        print_status_details(payloads, only_active=True)
+        print(f"[MAIN] Submitted detached tasks={submitted}")
+        print("[MAIN] Use --show-status to inspect running jobs and --kill-job <job_id> to terminate one.")
+        return 0
     else:
+        init_task_statuses(tasks)
         executor: Optional[ProcessPoolExecutor] = None
         fast_shutdown = False
         try:

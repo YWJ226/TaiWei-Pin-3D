@@ -1,74 +1,84 @@
-utl::set_metrics_stage "finish__{}"
+# ============================================================
+# final_report.tcl
+# Generate final OpenROAD reports and publish 6_final.* outputs.
+# ============================================================
+
+# Core setup
 source $::env(OPENROAD_SCRIPTS_DIR)/load.tcl
-load_design 5_route.def 5_route.sdc "Starting final report"
+source $::env(OPENROAD_SCRIPTS_DIR)/util.tcl
+source $::env(OPENROAD_SCRIPTS_DIR)/handoff_manager.tcl
+source $::env(OPENROAD_SCRIPTS_DIR)/final_util.tcl
+# Environment directories
+set LOG_DIR       [_get LOG_DIR]
+set RESULTS_DIR   [_get RESULTS_DIR]
+set REPORTS_DIR   [_get REPORTS_DIR]
+set OBJECTS_DIR   [_get OBJECTS_DIR]
+
+# Stage handoff
+set stage_name "final"
+# Inputs : 5_route.def / 5_route.v / 5_route.sdc
+# Outputs: 6_final.odb / 6_final.def / 6_final.v / 6_final.sdc / final_summary.txt
+set stage_paths [handoff_stage_paths $stage_name $RESULTS_DIR $OBJECTS_DIR $LOG_DIR]
+handoff_bind_stage_io $stage_paths
+
+# Additional setup
+handoff_log_paths $stage_paths
+utl::set_metrics_stage "finish__{}"
+load_design $DEF_IN $SDC_IN "Starting final report"
+source $::env(OPENROAD_SCRIPTS_DIR)/placement_utils.tcl
+apply_tier_policy [or_cts_owner_tier] -fixlib 1 -allow_net all 
 
 set_propagated_clock [all_clocks]
-
 puts "Starting global connection cleanup"
-
 global_connect
 
-# Delete routing obstructions for final DEF
 source $::env(OPENROAD_SCRIPTS_DIR)/deleteRoutingObstructions.tcl
 deleteRoutingObstructions
 
+set final_cross_tier_report [file join $LOG_DIR "cross_tier_nets.list"]
+set final_cross_tier_summary [file join $LOG_DIR "cross_tier_nets.summary.rpt"]
+set final_cross_tier_stats [report_cross_tier_snapshot $final_cross_tier_report -label "final"]
+set fh [open $final_cross_tier_summary w]
+puts $fh [_cross_tier_stats_brief $final_cross_tier_stats]
+puts $fh [format "cross_tier_all %d" [dict get $final_cross_tier_stats cross_tier_all]]
+puts $fh [format "upper_bottom %d" [dict get $final_cross_tier_stats upper_bottom]]
+puts $fh [format "upper_io %d" [dict get $final_cross_tier_stats upper_io]]
+puts $fh [format "bottom_io %d" [dict get $final_cross_tier_stats bottom_io]]
+puts $fh [format "upper_bottom_io %d" [dict get $final_cross_tier_stats upper_bottom_io]]
+puts $fh [format "unknown %d" [dict get $final_cross_tier_stats unknown]]
+close $fh
+
 puts "Writing final design files"
+handoff_write_stage_outputs $stage_paths \
+  -write_db 1 \
+  -write_def 1 \
+  -write_verilog 1 \
+  -write_sdc 1 \
+  -write_manifest 1
 
-write_db $::env(RESULTS_DIR)/6_final.odb
-write_def $::env(RESULTS_DIR)/6_final.def
-write_verilog $::env(RESULTS_DIR)/6_final.v
-write_sdc $::env(RESULTS_DIR)/6_final.sdc
 puts "Starting extraction"
-# Run extraction and STA
-if {[info exist ::env(RCX_RULES)]} {
-
-  # Set RC corner for RCX
-  # Set in config.mk
-  if {[info exist ::env(RCX_RC_CORNER)]} {
+if {[info exists ::env(RCX_RULES)]} {
+  if {[info exists ::env(RCX_RC_CORNER)]} {
     set rc_corner $::env(RCX_RC_CORNER)
   }
-
-  # RCX section
   define_process_corner -ext_model_index 0 X
   extract_parasitics -ext_model_file $::env(RCX_RULES)
-
-  # Write Spef
   write_spef $::env(RESULTS_DIR)/6_final.spef
   file delete $::env(DESIGN_NAME).totCap
-
-  # Read Spef for OpenSTA
   read_spef $::env(RESULTS_DIR)/6_final.spef
-
-  # Static IR drop analysis
-  # if {[info exist ::env(PWR_NETS_VOLTAGES)]} {
-  #   dict for {pwrNetName pwrNetVoltage}  {*}$::env(PWR_NETS_VOLTAGES) {
-  #       set_pdnsim_net_voltage -net ${pwrNetName} -voltage ${pwrNetVoltage}
-  #       analyze_power_grid -net ${pwrNetName} \
-  #           -error_file $::env(REPORTS_DIR)/${pwrNetName}.rpt
-  #   }
-  # } else {
-  #   puts "IR drop analysis for power nets is skipped because PWR_NETS_VOLTAGES is undefined"
-  # }
-  # if {[info exist ::env(GND_NETS_VOLTAGES)]} {
-  #   dict for {gndNetName gndNetVoltage}  {*}$::env(GND_NETS_VOLTAGES) {
-  #       set_pdnsim_net_voltage -net ${gndNetName} -voltage ${gndNetVoltage}
-  #       analyze_power_grid -net ${gndNetName} \
-  #           -error_file $::env(REPORTS_DIR)/${gndNetName}.rpt
-  #   }
-  # } else {
-  #   puts "IR drop analysis for ground nets is skipped because GND_NETS_VOLTAGES is undefined"
-  # }
-
 } else {
   puts "OpenRCX is not enabled for this platform."
 }
 
 source $::env(OPENROAD_SCRIPTS_DIR)/report_metrics.tcl
 report_metrics 6 "finish" false false
-puts "Final report metrics written to $::env(REPORTS_DIR)/finish_finish.rpt"
+set finish_report [file join $REPORTS_DIR "6_finish.rpt"]
+set wire_report [file join $REPORTS_DIR "6_wire_length.rpt"]
+_or_capture_cmd_to_file $wire_report {report_wire_length -detailed_route -summary}
+_write_openroad_final_summary $SUMMARY_OUT $finish_report $wire_report $final_cross_tier_stats
+puts "Final summary written to $SUMMARY_OUT"
 
 source $::env(OPENROAD_SCRIPTS_DIR)/save_images.tcl
-# Save a final image if openroad is compiled with the gui
 set VISUALIZE_FINAL [_get VISUALIZE_FINAL "0"]
 if {$VISUALIZE_FINAL eq "1"} {
   puts "gui::pause"

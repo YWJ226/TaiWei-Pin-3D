@@ -20,7 +20,7 @@ if {[info exists ::env(CTS_LAYER)]} {
 # mark_insts_by_master "*${fix_layer}*" FIRM
 # puts "Marked ${fix_layer} instances as FIRM"
 
-apply_tier_policy $cts_layer -cts_safe 1
+apply_tier_policy $cts_layer
 
 # Clone clock tree inverters next to register loads
 # so cts does not try to buffer the inverted clocks.

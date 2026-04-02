@@ -249,12 +249,14 @@ class RemoteLaunch:
     state_path: Path
     rc_path: Path
     pid_path: Path
+    phase_path: Path
 
 
 @dataclass(frozen=True)
 class RemoteLaunchSnapshot:
     launch: RemoteLaunch
     state: str
+    phase: str
     rc: Optional[int]
     pid: Optional[int]
     pid_alive: Optional[bool]
@@ -271,6 +273,7 @@ def _new_remote_launch(dispatch_dir: Path, stage: str) -> RemoteLaunch:
         state_path=dispatch_dir / f"{job_id}.state",
         rc_path=dispatch_dir / f"{job_id}.rc",
         pid_path=dispatch_dir / f"{job_id}.pid",
+        phase_path=dispatch_dir / f"{job_id}.phase",
     )
 
 
@@ -283,7 +286,12 @@ def _launch_from_job_id(dispatch_dir: Path, job_id: str) -> RemoteLaunch:
         state_path=dispatch_dir / f"{job_id}.state",
         rc_path=dispatch_dir / f"{job_id}.rc",
         pid_path=dispatch_dir / f"{job_id}.pid",
+        phase_path=dispatch_dir / f"{job_id}.phase",
     )
+
+
+def launch_from_job_id(dispatch_dir: Path, job_id: str) -> RemoteLaunch:
+    return _launch_from_job_id(dispatch_dir, job_id)
 
 
 def list_remote_launches(dispatch_dir: Path,
@@ -399,6 +407,115 @@ exit "$rc"
     os.chmod(launch.wrapper_path, 0o755)
 
 
+def _write_remote_task_wrapper(
+    repo_root: Path,
+    run_script: Path,
+    eval_script: Path,
+    run_log: Path,
+    eval_log: Path,
+    launch: RemoteLaunch,
+    *,
+    do_run: bool,
+    do_eval: bool,
+) -> None:
+    run_log_abs = repo_root / run_log
+    eval_log_abs = repo_root / eval_log
+    exports = "\n".join(_remote_export_lines())
+    unset_line = (
+        "unset DISPLAY WAYLAND_DISPLAY XAUTHORITY DBUS_SESSION_BUS_ADDRESS "
+        "LANG LANGUAGE LC_ALL LC_CTYPE LC_MESSAGES "
+        "SSH_AGENT_PID SSH_AUTH_SOCK SSH_CLIENT SSH_CONNECTION SSH_TTY "
+        "WINDOWID XDG_RUNTIME_DIR XDG_SESSION_ID XDG_SESSION_CLASS "
+        "XDG_SESSION_TYPE XDG_CURRENT_DESKTOP XMODIFIERS "
+        "VSCODE_AGENT_FOLDER VSCODE_CLI_REQUIRE_TOKEN VSCODE_CWD "
+        "VSCODE_ESM_ENTRYPOINT VSCODE_HANDLES_SIGPIPE "
+        "VSCODE_HANDLES_UNCAUGHT_ERRORS VSCODE_IPC_HOOK_CLI "
+        "VSCODE_NLS_CONFIG ELECTRON_RUN_AS_NODE"
+    )
+    wrapper = f"""#!/usr/bin/env bash
+set -uo pipefail
+
+write_state() {{
+  printf '%s\\n' "$1" > {shlex.quote(str(launch.state_path))}
+}}
+
+write_rc() {{
+  printf '%s\\n' "$1" > {shlex.quote(str(launch.rc_path))}
+}}
+
+write_phase() {{
+  printf '%s\\n' "$1" > {shlex.quote(str(launch.phase_path))}
+}}
+
+on_term() {{
+  write_rc 143
+  write_state failed
+  exit 143
+}}
+
+trap on_term HUP INT TERM
+
+printf '%s\\n' "$$" > {shlex.quote(str(launch.pid_path))}
+write_phase starting
+write_state starting
+
+mkdir -p {shlex.quote(str(run_log_abs.parent))}
+mkdir -p {shlex.quote(str(eval_log_abs.parent))}
+
+{exports}
+{unset_line}
+
+cd {shlex.quote(str(repo_root))} || {{
+  write_rc 1
+  write_phase starting
+  write_state failed
+  exit 1
+}}
+
+run_stage() {{
+  local phase="$1"
+  local script_path="$2"
+  local log_path="$3"
+  write_phase "$phase"
+  write_state running
+  bash "$script_path" >"$log_path" 2>&1
+  return $?
+}}
+
+rc=0
+"""
+    if do_run:
+        wrapper += f"""
+run_stage run {shlex.quote(str(run_script))} {shlex.quote(str(run_log_abs))}
+rc=$?
+if [[ "$rc" -ne 0 ]]; then
+  write_rc "$rc"
+  write_phase run
+  write_state failed
+  exit "$rc"
+fi
+"""
+    if do_eval:
+        wrapper += f"""
+run_stage eval {shlex.quote(str(eval_script))} {shlex.quote(str(eval_log_abs))}
+rc=$?
+if [[ "$rc" -ne 0 ]]; then
+  write_rc "$rc"
+  write_phase eval
+  write_state failed
+  exit "$rc"
+fi
+"""
+    wrapper += """
+write_rc 0
+write_phase done
+write_state ok
+exit 0
+"""
+    _write_text_file(launch.wrapper_path, wrapper)
+    os.chmod(launch.wrapper_path, 0o755)
+
+
 def _submit_remote_launch(
     host: str,
     dispatch_dir: Path,
@@ -473,6 +590,7 @@ def remote_pid_is_alive(host: str, pid: int) -> Optional[bool]:
 def snapshot_remote_launch(host: str,
                            launch: RemoteLaunch) -> RemoteLaunchSnapshot:
     state = _read_text(launch.state_path)
+    phase = _read_text(launch.phase_path)
     rc_text = _read_text(launch.rc_path)
     pid_text = _read_text(launch.pid_path)
 
@@ -483,6 +601,7 @@ def snapshot_remote_launch(host: str,
     return RemoteLaunchSnapshot(
         launch=launch,
         state=state,
+        phase=phase,
         rc=rc,
         pid=pid,
         pid_alive=pid_alive,
@@ -567,3 +686,30 @@ def run_remote_task(
     _write_remote_wrapper(repo_root, script_path, log_path, launch)
     _submit_remote_launch(host, dispatch_dir, launch, repo_root / log_path)
     _wait_remote_launch(host, launch)
+
+
+def submit_remote_task(
+    repo_root: Path,
+    host: str,
+    dispatch_dir: Path,
+    run_script: Path,
+    eval_script: Path,
+    run_log: Path,
+    eval_log: Path,
+    *,
+    do_run: bool,
+    do_eval: bool,
+) -> RemoteLaunch:
+    launch = _new_remote_launch(dispatch_dir, "task")
+    _write_remote_task_wrapper(
+        repo_root=repo_root,
+        run_script=run_script,
+        eval_script=eval_script,
+        run_log=run_log,
+        eval_log=eval_log,
+        launch=launch,
+        do_run=do_run,
+        do_eval=do_eval,
+    )
+    _submit_remote_launch(host, dispatch_dir, launch, repo_root / run_log)
+    return launch

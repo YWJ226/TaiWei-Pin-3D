@@ -16,7 +16,7 @@ export NUM_CORES="${NUM_CORES:-16}"
 source "${FLOW_ROOT}/env.sh"
 
 export DESIGN_DIMENSION="3D"
-export DESIGN_NICKNAME="gcd"
+export DESIGN_NICKNAME="ibex"
 export USE_FLOW="cadence"
 export FLOW_VARIANT="${FLOW_VARIANT:-cadence}"
 
@@ -130,7 +130,7 @@ run_make cds-cts
 
 # input: 4_cts.def/.v/.sdc
 # output: 5_route.def/.v/.sdc
-run_make cds-route
+run_make cds-route-new
 
 # input: routed database
 # output: final_summary.txt, final_metrics.csv, restored final views

@@ -1,17 +1,36 @@
+# ============================================================
+# place_macro_bottom.tcl
+# Place bottom-tier macros after the upper-tier macro stage.
+# ============================================================
+
+# Core setup
 source $::env(OPENROAD_SCRIPTS_DIR)/load.tcl
 source $::env(OPENROAD_SCRIPTS_DIR)/util.tcl
-load_design 2_5_floorplan_upper.v 1_synth.sdc "Starting macro placement"
+source $::env(OPENROAD_SCRIPTS_DIR)/handoff_manager.tcl
 
+# Environment directories
+set LOG_DIR       [_get LOG_DIR]
+set RESULTS_DIR   [_get RESULTS_DIR]
+set REPORTS_DIR   [_get REPORTS_DIR]
+set OBJECTS_DIR   [_get OBJECTS_DIR]
+
+# Stage handoff
+set stage_name "macro-bottom"
+# Inputs : 2_5_place_macro_upper.def / 2_5_place_macro_upper.v / 1_synth.sdc
+# Outputs: 2_5_place_macro_bottom.def / 2_5_place_macro_bottom.v / 1_synth.sdc
+set stage_paths [handoff_stage_paths $stage_name $RESULTS_DIR $OBJECTS_DIR $LOG_DIR]
+handoff_bind_stage_io $stage_paths
+
+# Additional setup
+handoff_log_paths $stage_paths
+load_design $DEF_IN $SDC_IN "Starting macro placement bottom"
 source $::env(OPENROAD_SCRIPTS_DIR)/placement_utils.tcl
 source $::env(OPENROAD_SCRIPTS_DIR)/floorplan_utils.tcl
-
-apply_tier_policy bottom -cts_safe 1
-
+apply_tier_policy bottom -fixlib 1 -allow_net all 
 source $::env(OPENROAD_SCRIPTS_DIR)/place_macro_util.tcl
 
-write_def     $env(RESULTS_DIR)/2_5_floorplan_macro.def
-write_verilog $env(RESULTS_DIR)/2_5_floorplan_macro.v
-
-save_image -resolution 0.1 $::env(LOG_DIR)/2_place_macro_bottom.webp 
-
+handoff_write_stage_outputs $stage_paths \
+  -copy_sdc 1 \
+  -write_image 1 \
+  -write_manifest 1
 exit

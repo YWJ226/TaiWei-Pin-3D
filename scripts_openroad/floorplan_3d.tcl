@@ -1,7 +1,28 @@
+# ============================================================
+# floorplan_3d.tcl
+# Build the 3D floorplan from the generated 3D netlist view.
+# ============================================================
+
+# Core setup
 source $::env(OPENROAD_SCRIPTS_DIR)/load.tcl
+source $::env(OPENROAD_SCRIPTS_DIR)/handoff_manager.tcl
 
-load_design $env(DESIGN_NAME)_3D.fp.v 1_synth.sdc "Starting 3D floorplan"
+# Environment directories
+set LOG_DIR       [_get LOG_DIR]
+set RESULTS_DIR   [_get RESULTS_DIR]
+set REPORTS_DIR   [_get REPORTS_DIR]
+set OBJECTS_DIR   [_get OBJECTS_DIR]
 
+# Stage handoff
+set stage_name "floorplan-3d"
+# Inputs : ${DESIGN_NAME}_3D.fp.v / 1_synth.sdc
+# Outputs: 2_3_floorplan_3d.def / 2_3_floorplan_3d.v / 1_synth.sdc
+set stage_paths [handoff_stage_paths $stage_name $RESULTS_DIR $OBJECTS_DIR $LOG_DIR]
+handoff_bind_stage_io $stage_paths
+
+# Additional setup
+handoff_log_paths $stage_paths
+load_design $V_IN $SDC_IN "Starting 3D floorplan"
 source $::env(OPENROAD_SCRIPTS_DIR)/placement_utils.tcl
 source $::env(OPENROAD_SCRIPTS_DIR)/floorplan_utils.tcl
 # ------------------------------------------------------------
@@ -116,6 +137,12 @@ if {[info exists ::env(MAKE_TRACKS)] && $::env(MAKE_TRACKS) ne ""} {
   make_tracks
 }
 
-write_def     $env(RESULTS_DIR)/2_3_floorplan_3d.def
-write_verilog $env(RESULTS_DIR)/2_3_floorplan_3d.v
+set floorplan_cross_tier_report [file join $LOG_DIR "2_3_floorplan_3d.nets"]
+set floorplan_cross_tier_stats [report_cross_tier_snapshot $floorplan_cross_tier_report -label "floorplan_3d"]
+puts "INFO(OR): floorplan cross-tier estimate=[dict get $floorplan_cross_tier_stats cross_tier_all]"
+
+handoff_write_stage_outputs $stage_paths \
+  -copy_sdc 1 \
+  -write_image 1 \
+  -write_manifest 1
 exit

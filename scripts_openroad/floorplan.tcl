@@ -52,7 +52,7 @@ if { [info exists ::env(MAKE_TRACKS)] } {
 remove_buffers
 
 # Restructure for timing #########
-if { [info exist ::env(RESYNTH_TIMING_RECOVER)] && $::env(RESYNTH_TIMING_RECOVER) == 1 } {
+if { [info exists ::env(RESYNTH_TIMING_RECOVER)] && $::env(RESYNTH_TIMING_RECOVER) == 1 } {
   repair_design
   repair_timing
   # pre restructure area/timing report (ideal clocks)
@@ -96,7 +96,7 @@ report_units_metric
 # source $::env(OPENROAD_SCRIPTS_DIR)/report_metrics.tcl
 # report_metrics "floorplan final" false false
 
-if { [info exist ::env(RESYNTH_AREA_RECOVER)] && $::env(RESYNTH_AREA_RECOVER) == 1 } {
+if { [info exists ::env(RESYNTH_AREA_RECOVER)] && $::env(RESYNTH_AREA_RECOVER) == 1 } {
 
   utl::push_metrics_stage "floorplan__{}__pre_restruct"
   set num_instances [llength [get_cells -hier *]]

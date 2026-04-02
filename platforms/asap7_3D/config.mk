@@ -6,7 +6,7 @@
 export PROCESS ?= 7
 
 # -------- Tech / Libs --------
-ifeq ($(USE_FLOW),openroad)
+ifneq (,$(filter $(USE_FLOW),openroad OpenROAD))
   export TECH_LEF  ?= $(PLATFORM_DIR)/lef/asap7_tech_1x_2A6M7M.lef
   export RCX_RULES         ?= $(PLATFORM_DIR)/asap7_tech_1x_2A6M7M.rcx_patterns.rules
   export MIN_ROUTING_LAYER ?= M2
@@ -97,6 +97,8 @@ export IO_PLACER_V ?= M3
 export HBT_MAX_CORE_UTILIZATION ?= 0.8
 # PDN / Endcap / Welltie（3D 策略）
 export PDN_TCL      ?= $(PLATFORM_DIR)/openRoad/pdn/grid_strategy-M1-M2-M5-M6.tcl
+export PDN_TCL_BOTTOM ?= $(PLATFORM_DIR)/openRoad/pdn/grid_strategy-M1-M2-M5-M6.bottom.tcl
+export PDN_TCL_UPPER  ?= $(PLATFORM_DIR)/openRoad/pdn/grid_strategy-M1-M2-M5-M6.upper.tcl
 export TAPCELL_TCL  ?= $(PLATFORM_DIR)/tapcell.tcl
 export TAP_CELL_NAME = TAPCELL_ASAP7_75t_R_bottom
 export MAKE_TRACKS       ?= $(PLATFORM_DIR)/openRoad/make_tracks.6M7M.tcl

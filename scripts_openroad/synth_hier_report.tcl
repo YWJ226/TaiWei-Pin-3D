@@ -10,11 +10,11 @@ synth  -top $::env(DESIGN_NAME)
 
 
 
-if { [info exist ::env(ADDER_MAP_FILE)] && [file isfile $::env(ADDER_MAP_FILE)] } {
+if { [info exists ::env(ADDER_MAP_FILE)] && [file isfile $::env(ADDER_MAP_FILE)] } {
   techmap -map $::env(ADDER_MAP_FILE)
 }
 techmap
-if {[info exist ::env(DFF_LIB_FILE)]} {
+if {[info exists ::env(DFF_LIB_FILE)]} {
   dfflibmap -liberty $::env(DFF_LIB_FILE)
 } else {
   dfflibmap -liberty $::env(DONT_USE_SC_LIB)
@@ -29,9 +29,9 @@ foreach lib $::env(DONT_USE_LIBS) {
 }
 tee -o $::env(REPORTS_DIR)/synth_hier_stat.txt stat {*}$stat_libs
 
-if { [info exist ::env(REPORTS_DIR)] && [file isfile $::env(REPORTS_DIR)/synth_hier_stat.txt] } {
+if { [info exists ::env(REPORTS_DIR)] && [file isfile $::env(REPORTS_DIR)/synth_hier_stat.txt] } {
   set ungroup_threshold 0
-  if { [info exist ::env(MAX_UNGROUP_SIZE)] && $::env(MAX_UNGROUP_SIZE) > 0 } {
+  if { [info exists ::env(MAX_UNGROUP_SIZE)] && $::env(MAX_UNGROUP_SIZE) > 0 } {
     set ungroup_threshold $::env(MAX_UNGROUP_SIZE)
     puts "Ungroup modules of size $ungroup_threshold"
   }
@@ -81,4 +81,3 @@ if { [info exist ::env(REPORTS_DIR)] && [file isfile $::env(REPORTS_DIR)/synth_h
   }
   close $out_script_ptr
 }
-

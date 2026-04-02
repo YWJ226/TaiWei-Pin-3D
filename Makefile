@@ -194,7 +194,7 @@ endif
 
 # 3D flow config consolidation:
 # Keep only config2d.mk + config.mk, and derive cover LEF variants at runtime.
-export THREE_D_ITERATION ?= 1
+export OUTER_ITERATIONS ?= 1
 export SKIP_2D_PART ?= 0
 SC_LEF_UPPER_COVER ?= $(SC_LEF)
 SC_LEF_BOTTOM_COVER ?= $(SC_LEF)
@@ -223,7 +223,7 @@ endif
 LEF_FILES_CTS_OWNER ?= $(LEF_FILES_CTS)
 LEF_FILES_CTS_RECEIVE ?= $(LEF_FILES_NONE_CTS)
 LEF_FILES_CTS_FINALIZE ?= $(LEF_FILES_NONE_CTS)
-LEF_FILES_SPLIT ?= $(TECH_LEF) $(SC_LEF) $(ADDITIONAL_LEFS_DEFAULT)
+LEF_FILES_SPLIT ?= $(LEF_FILES)
 LEF_FILES_ROUTE_ONLY ?= $(LEF_FILES)
 LEF_FILES_ROUTE ?= $(LEF_FILES)
 LEF_FILES_POSTROUTE_RECEIVE ?= $(LEF_FILES_NONE_CTS)
@@ -359,12 +359,17 @@ ord-place-bottom:
 .PHONY: ord-3d-floorplan
 ord-3d-floorplan:
 	@$(call _mkstdirs)
-	$(call _or,$(OPENROAD_SCRIPTS_DIR)/floorplan_3d.tcl,$(LOG_DIR)/2_3_floorplan_3d.log)
+	$(call _run_with_tmp_log,$(LOG_DIR)/2_3_floorplan_3d.log,LEF_FILES="$(LEF_FILES_SPLIT)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/floorplan_3d.tcl)
 
 .PHONY: ord-3d-io
 ord-3d-io:
 	@$(call _mkstdirs)
-	$(call _or,$(OPENROAD_SCRIPTS_DIR)/io_place_3d.tcl,$(LOG_DIR)/2_4_floorplan_io.log)
+	$(call _run_with_tmp_log,$(LOG_DIR)/2_4_floorplan_io.log,LEF_FILES="$(LEF_FILES_SPLIT)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/io_place_3d.tcl)
+
+.PHONY: ord-3d-split-net
+ord-3d-split-net:
+	@$(call _mkstdirs)
+	$(call _run_with_tmp_log,$(LOG_DIR)/2_4_floorplan_split.log,LEF_FILES="$(LEF_FILES_SPLIT)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/split_net_stage.tcl)
 
 .PHONY: ord-place-macro-upper
 ord-place-macro-upper:
@@ -376,13 +381,20 @@ ord-place-macro-bottom:
 	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/2_5_place_macro_bottom.log,LEF_FILES="$(LEF_FILES_UPPER_COVER)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/place_macro_bottom.tcl)
 
+.PHONY: ord-3d-pdn-only-bottom
+ord-3d-pdn-only-bottom:
+	@$(call _mkstdirs)
+	$(call _run_with_tmp_log,$(LOG_DIR)/2_6_floorplan_pdn_bottom.log,LEF_FILES="$(LEF_FILES_UPPER_COVER)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/pdn_only_bottom.tcl)
+
+.PHONY: ord-3d-pdn-only-upper
+ord-3d-pdn-only-upper:
+	@$(call _mkstdirs)
+	$(call _run_with_tmp_log,$(LOG_DIR)/2_6_floorplan_pdn_upper.log,LEF_FILES="$(LEF_FILES_BOTTOM_COVER)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/pdn_only_upper.tcl)
+
 .PHONY: ord-3d-pdn-only
 ord-3d-pdn-only:
-	@$(call _mkstdirs)
-	$(call _or,$(OPENROAD_SCRIPTS_DIR)/pdn_only.tcl,$(LOG_DIR)/2_6_floorplan_pdn.log)
-	@cp -f $(RESULTS_DIR)/1_synth.sdc $(RESULTS_DIR)/2_floorplan.sdc
-	@cp -f $(RESULTS_DIR)/2_6_floorplan_pdn.def $(RESULTS_DIR)/2_floorplan.def
-	@cp -f $(RESULTS_DIR)/2_6_floorplan_pdn.v   $(RESULTS_DIR)/2_floorplan.v
+	@$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) ord-3d-pdn-only-bottom
+	@$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) ord-3d-pdn-only-upper
 
 .PHONY: ord-3d-pdn
 ord-3d-pdn:
@@ -415,39 +427,30 @@ ord-pre_cts:
 .PHONY: ord-gp2lg
 ord-gp2lg:
 	@$(call _mkstdirs)
-	@cp -f $(RESULTS_DIR)/$(DESIGN_NAME)_3D.tmp.def $(RESULTS_DIR)/$(DESIGN_NAME)_3D.def
-	@cp -f $(RESULTS_DIR)/$(DESIGN_NAME)_3D.tmp.v $(RESULTS_DIR)/$(DESIGN_NAME)_3D.v
-	@cp -f $(RESULTS_DIR)/$(DESIGN_NAME)_3D.def $(RESULTS_DIR)/$(DESIGN_NAME)_3D.lg.def
-	@cp -f $(RESULTS_DIR)/$(DESIGN_NAME)_3D.v $(RESULTS_DIR)/$(DESIGN_NAME)_3D.lg.v
+	$(call _or,$(OPENROAD_SCRIPTS_DIR)/handoff_copy_gp2lg.tcl,$(LOG_DIR)/3_3_gp2lg.log)
 
 .PHONY: ord-legalize-upper
 ord-legalize-upper:
 	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/3_5_lg_upper.log,LEF_FILES="$(LEF_FILES_BOTTOM_COVER)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/opt_lg_upper.tcl)
-	@cp -f $(RESULTS_DIR)/$(DESIGN_NAME)_3D.lg.def $(RESULTS_DIR)/3_place.def
-	@cp -f $(RESULTS_DIR)/$(DESIGN_NAME)_3D.lg.v $(RESULTS_DIR)/3_place.v
-	@cp -f $(RESULTS_DIR)/2_floorplan.sdc $(RESULTS_DIR)/3_place.sdc
 
 .PHONY: ord-legalize-bottom
 ord-legalize-bottom:
 	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/3_4_lg_bottom.log,LEF_FILES="$(LEF_FILES_UPPER_COVER)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/opt_lg_bottom.tcl)
-	@cp -f $(RESULTS_DIR)/$(DESIGN_NAME)_3D.lg.def $(RESULTS_DIR)/3_place.def
-	@cp -f $(RESULTS_DIR)/$(DESIGN_NAME)_3D.lg.v $(RESULTS_DIR)/3_place.v
-	@cp -f $(RESULTS_DIR)/2_floorplan.sdc $(RESULTS_DIR)/3_place.sdc
 
 # ----- CTS / Route / Finish -----
 .PHONY: ord-cts
 ord-cts:
 	@$(call _mkstdirs)
 	@echo "[ORD] CTS"
-	$(call _run_with_tmp_log,$(LOG_DIR)/4_1_cts.log,LEF_FILES="$(LEF_FILES_CTS)" COVER_LAYER="$(COVER_LAYER)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/cts.tcl)
+	$(call _run_with_tmp_log,$(LOG_DIR)/4_0_cts.log,LEF_FILES="$(LEF_FILES_CTS)" COVER_LAYER="$(COVER_LAYER)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/cts.tcl)
 
 .PHONY: ord-cts-post
 ord-cts-post:
 	@$(call _mkstdirs)
-	@echo "[ORD] CTS"
-	$(call _run_with_tmp_log,$(LOG_DIR)/4_1_cts_post.log, LEF_FILES="$(LEF_FILES_NONE_CTS)" COVER_LAYER="$(COVER_LAYER)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/cts_post.tcl)
+	@echo "[ORD] CTS post"
+	$(call _run_with_tmp_log,$(LOG_DIR)/4_1_cts_post.log,LEF_FILES="$(LEF_FILES_NONE_CTS)" COVER_LAYER="$(COVER_LAYER)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/cts_post.tcl)
 
 .PHONY: ord-re-cts
 ord-re-cts:
@@ -458,21 +461,14 @@ ord-re-cts:
 .PHONY: ord-route
 ord-route:
 	@$(call _mkstdirs)
-	$(call _or,$(OPENROAD_SCRIPTS_DIR)/global_route.tcl,$(LOG_DIR)/5_1_grt.log)
-	$(call _or,$(OPENROAD_SCRIPTS_DIR)/detail_route.tcl,$(LOG_DIR)/5_2_route.log)
-	@cp -f $(RESULTS_DIR)/4_cts.sdc $(RESULTS_DIR)/5_route.sdc 2>/dev/null || true
-	@cp -f $(RESULTS_DIR)/5_2_route.odb $(RESULTS_DIR)/5_route.odb 2>/dev/null || true
-
-$(RESULTS_DIR)/5_route.v:
-	@export OR_DB=5_route; \
-	$(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/write_verilog.tcl
+	$(call _run_with_tmp_log,$(LOG_DIR)/5_1_grt.log,LEF_FILES="$(LEF_FILES)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/global_route.tcl)
+	$(call _run_with_tmp_log,$(LOG_DIR)/5_2_route.log,LEF_FILES="$(LEF_FILES)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/detail_route.tcl)
 
 .PHONY: ord-final
 ord-final:
 	@$(call _mkstdirs)
-	@# Final report: equivalent to do-6_report (inputs: 5_route.def / 5_route.sdc)
 	@echo "[ORD] final_report ..."
-	$(call _or,$(OPENROAD_SCRIPTS_DIR)/final_report.tcl,$(LOG_DIR)/6_report.log)
+	$(call _run_with_tmp_log,$(LOG_DIR)/6_report.log,LEF_FILES="$(LEF_FILES)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/final_report.tcl)
 
 .PHONY: ord-3d-flow-2dpart
 ord-3d-flow-2dpart:
@@ -483,18 +479,23 @@ ord-3d-flow-2dpart:
 .PHONY: ord-3d-flow
 ord-3d-flow:
 	@$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) ord-pre
-	@$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) ord-3d-pdn
+	@$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) ord-3d-floorplan
+	@$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) ord-3d-io
+	@$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) ord-3d-split-net
+	@$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) ord-place-macro-upper
+	@$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) ord-place-macro-bottom
+	@$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) ord-3d-pdn-only
 	@$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) ord-place-init
-	@$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) ord-place-init-bottom
 	@$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) ord-place-init-upper
-	@for i in $$(seq 1 $(THREE_D_ITERATION)); do \
+	@$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) ord-place-init-bottom
+	@for i in $$(seq 1 $(OUTER_ITERATIONS)); do \
 		echo "Iteration: $$i"; \
 		$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) ord-place-upper; \
 		$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) ord-place-bottom; \
 	done
 	@$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) ord-gp2lg
-	@$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) ord-legalize-bottom
 	@$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) ord-legalize-upper
+	@$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) ord-legalize-bottom
 	@$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) ord-cts
 	@$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) ord-cts-post
 	@$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) ord-route

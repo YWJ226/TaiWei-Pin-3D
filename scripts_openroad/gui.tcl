@@ -2,11 +2,11 @@
 source $::env(OPENROAD_SCRIPTS_DIR)/read_liberty.tcl
 
 # Read def
-if {[info exist ::env(DEF_FILE)]} {
+if {[info exists ::env(DEF_FILE)]} {
     # Read lef
     read_lef $::env(TECH_LEF)
     read_lef $::env(SC_LEF)
-    if {[info exist ::env(ADDITIONAL_LEFS)]} {
+    if {[info exists ::env(ADDITIONAL_LEFS)]} {
       foreach lef $::env(ADDITIONAL_LEFS) {
         read_lef $lef
       }
@@ -18,7 +18,7 @@ if {[info exist ::env(DEF_FILE)]} {
     read_db $input_file
 }
 
-if {![info exist ::env(GUI_NO_TIMING)]} {
+if {![info exists ::env(GUI_NO_TIMING)]} {
   # Determine design stage (1 ... 6)
   set design_stage [lindex [split [file tail $input_file] "_"] 0]
   

@@ -1,339 +1,486 @@
-# Cadence 3D Co-Optimization Strategy
+# Cadence 3D Commercial Flow and Co-Optimization Strategy
 
-## DOC
+## 1. Scope
 
-This flow is intentionally not built around one monolithic Tcl script. The optimization result comes from three coordinated mechanisms:
+This document describes the current commercial 3D flow implemented in the Cadence branch of this repository. It is not a conceptual note only. It is meant to be a code-aligned reference for:
 
-1. Constraints decide which tier, net class, or clock scope is allowed to move in the current phase.
-2. LEF and COVER view selection decide which physical implementation options are visible to Innovus in that phase.
-3. Tcl stage scripts execute one phase of the flow and write an explicit checkpoint for the next phase.
+- how the flow is launched today
+- which `make` targets exist
+- which Tcl or Python script each target runs
+- the exact stage input and output handoff files
+- which LEF view is loaded at each stage
+- what tier strategy each stage uses
+- which main tool commands are executed
+- how the optimization strategy is implemented across the whole flow
 
-The main objective is to minimize additional cross-tier nets while still using a largely 2D tool interface to approximate 3D co-optimization. The flow therefore favors staged optimization, explicit checkpoints, and view switching over a single aggressive optimization loop.
+The authoritative sources are:
 
-The important implication is that `apply_tier_policy` is not the optimizer. It is a constraint setter. The actual result depends on the combination of:
+- [Makefile](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/Makefile)
+- [test/commercial/CDS_3D_NEW_FLOW.sh](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/test/commercial/CDS_3D_NEW_FLOW.sh)
+- [scripts_cadence/handoff_manager.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_cadence/handoff_manager.tcl)
 
-- `Makefile` stage orchestration
-- shell wrapper sequencing in `test.swerv_wrapper_run/*.sh`
-- LEF/COVER view selection
-- tier and net-class constraints
-- Innovus commands executed in each phase
+## 2. How The Current Commercial Flow Runs
 
-### LEF and COVER View Strategy
+### 2.1 Public launchers
 
-The Makefile controls phase visibility through view-specific variables:
+The current commercial flow is normally driven by:
 
+- [CDS_3D_NEW_FLOW.sh](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/test/commercial/CDS_3D_NEW_FLOW.sh)
+- [CDS_3D_ALLOW_NET_MATRIX.sh](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/test/commercial/CDS_3D_ALLOW_NET_MATRIX.sh)
+
+`CDS_3D_NEW_FLOW.sh` is the single-run launcher. `CDS_3D_ALLOW_NET_MATRIX.sh` wrap it for comparison experiments.
+
+### 2.2 Default target sequence
+
+The current commercial launcher runs the following path by default:
+
+```text
+clean_all
+cds-3d-flow-2dpart
+  -> cds-synth
+  -> cds-preplace
+  -> cds-tier-partition
+cds-pre
+cds-3d-floorplan
+cds-3d-io
+cds-3d-split-net
+cds-place-macro-upper
+cds-place-macro-bottom
+cds-3d-pdn-only
+  -> cds-3d-pdn-only-bottom
+  -> cds-3d-pdn-only-upper
+cds-place-init
+cds-place-init-upper
+cds-place-init-bottom
+OUTER_ITERATIONS times:
+  cds-place-upper
+  cds-place-bottom
+cds-gp2lg
+cds-legalize-upper
+cds-legalize-bottom
+cds-cts
+  -> cds-cts-owner-tree
+  -> cds-cts-receive-opt
+  -> cds-cts-finalize
+cds-route
+cds-restore
+```
+
+Important current choices:
+
+- The public CTS target is the staged flow `cds-cts`, not `cds-cts-legacy`.
+- The public route target used by the launcher is currently `cds-route`, which still points to the legacy route Tcl for robustness.
+- The final reporting target used by the launcher is `cds-restore`, not `cds-final`, because `cds-restore` can reuse the routed ENC database when present and fall back to DEF otherwise.
+
+### 2.3 Resume and reuse behavior
+
+The launcher also supports:
+
+- `REUSE_2DPART_FROM_VARIANT=<variant>`
+  - copy `1_synth.sdc`, `2_2_floorplan_io.def`, `2_2_floorplan_io.v`, and partition artifacts from an existing variant
+  - then continue from `cds-pre`
+- `START_FROM=<stage>`
+  - resume from a later physical stage without rerunning earlier ones
+
+This is why the physical stage contracts must be explicit and stable.
+
+## 3. Core Flow Architecture
+
+### 3.1 Handoff management
+
+The flow is no longer organized around hardcoded filenames scattered in stage scripts. The canonical stage contracts are defined in:
+
+- [handoff_manager.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_cadence/handoff_manager.tcl)
+
+For each stage, `handoff_stage_paths` resolves:
+
+- `def_in`, `v_in`, `sdc_in`, `enc_in`
+- `def_out`, `v_out`, `sdc_out`, `enc_out`
+- aliases such as `2_floorplan.def`, `3_place.def`, `4_cts.def`, `5_route.def`
+- manifest path `results/.../handoffs/<stage>.tcl`
+
+Every handoff-managed stage uses:
+
+```tcl
+set stage_paths [handoff_stage_paths ...]
+handoff_bind_stage_io $stage_paths
+handoff_log_paths $stage_paths
+handoff_write_stage_outputs ...
+```
+
+This is the basis for restartability and stage-level debugging.
+
+### 3.2 LEF view strategy
+
+The flow uses LEF view switching as a first-class optimization knob. The Makefile derives the active LEF bundles:
+
+- `LEF_FILES`
 - `LEF_FILES_UPPER_COVER`
 - `LEF_FILES_BOTTOM_COVER`
+- `LEF_FILES_SPLIT`
 - `LEF_FILES_CTS_OWNER`
 - `LEF_FILES_CTS_RECEIVE`
-- `LEF_FILES_CTS_MIXED`
 - `LEF_FILES_CTS_FINALIZE`
+- `LEF_FILES_ROUTE`
 - `LEF_FILES_ROUTE_ONLY`
 - `LEF_FILES_POSTROUTE_RECEIVE`
 - `LEF_FILES_POSTROUTE_OWNER`
-- `LEF_FILES_POSTROUTE_MIXED`
-- `CTS_LAYER`
-- `COVER_LAYER`
 
-These variables are part of the optimization strategy, not just file plumbing.
+The derivation is controlled in [Makefile](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/Makefile):
 
-- `allow_net` limits which net class is eligible for optimization in a given pass.
-- COVER-specific LEF files limit which cells and physical views are available in that pass.
-- CTS-specific LEF files expose the owner-tier implementation view selected by `CTS_LAYER`.
-- route and postRoute stages use different LEF selections so wiring realization and RC-aware ECO are kept separate.
+```make
+LEF_FILES_UPPER_COVER  = $(TECH_LEF) $(SC_LEF_UPPER_COVER)  $(ADDITIONAL_LEFS_UPPER_COVER)
+LEF_FILES_BOTTOM_COVER = $(TECH_LEF) $(SC_LEF_BOTTOM_COVER) $(ADDITIONAL_LEFS_BOTTOM_COVER)
+LEF_FILES_SPLIT        = $(TECH_LEF) $(SC_LEF) $(ADDITIONAL_LEFS_DEFAULT)
+```
 
-This is how the flow approximates 3D optimization using a 2D-oriented tool interface.
+Interpretation:
 
-The Makefile already demonstrates this pattern in the existing upper and bottom optimization targets. When a tier is optimized, the flow loads the LEF view associated with that tier's COVER strategy. This helps avoid false overlap handling between COVER cells and CORE cells, but it is still not sufficient by itself.
+- `LEF_FILES_UPPER_COVER` means the upper tier is represented as the COVER side, so the bottom tier is the intended active optimization side.
+- `LEF_FILES_BOTTOM_COVER` means the bottom tier is represented as the COVER side, so the upper tier is the intended active optimization side.
+- `LEF_FILES_SPLIT` is the full two-tier view used to classify and split mixed-tier nets.
 
-Even when the active LEF view prevents COVER and CORE cells from being treated as ordinary overlaps, the placer may still move COVER cells unless they are explicitly fixed. For that reason, LEF/COVER view switching and explicit placement fixing are both required:
+For CTS and post-route:
 
-- view switching controls what Innovus can legally see and optimize
-- `set_tier_placement_status ... fixed` prevents the placer from drifting COVER cells during incremental optimization
+- `CTS_LAYER` selects the owner tier
+- `COVER_LAYER` is automatically derived as the opposite tier
+- `LEF_FILES_CTS_OWNER` is the owner-active LEF view
+- `LEF_FILES_CTS_RECEIVE` and `LEF_FILES_CTS_FINALIZE` use the opposite "none-CTS" view
+- `LEF_FILES_POSTROUTE_RECEIVE` follows the receive-side view
+- `LEF_FILES_POSTROUTE_OWNER` follows the owner-side view
 
-The flow should therefore treat COVER fixing as a mandatory constraint layer on top of view selection, not as an optional refinement.
+### 3.3 Tier strategy
 
-### How To Read The Flow
+The tier policy is implemented in:
 
-Read the flow in this order:
+- [tier_cell_policy.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_cadence/tier_cell_policy.tcl)
 
-1. `Makefile`
-2. `test.swerv_wrapper_run/*.sh`
-3. `scripts_cadence/*.tcl`
+The key mechanism is `apply_tier_policy <tier> ...`, which combines:
 
-The Makefile defines stage boundaries and view selection. The shell wrappers define the outer loop. The Tcl scripts implement one phase at a time.
+- opposite-tier library restriction through `set_dont_use`
+- filler/tap/site selection for the active tier
+- optional instance locking by suffix
+- net-class mask through `-allow_net`
+- row rebuilding through `rebuild_rows_for_site`
 
-## CTS
-
-### Goal
-
-CTS is modeled as a semantic staged flow driven by `CTS_LAYER`:
-
-- `owner-tree`: build the owner-tier clock tree on `CTS_LAYER`
-- `receive-opt`: optimize receive-tier-only nets on the opposite tier
-- `owner-mixed`: optimize mixed-only nets with the owner tier active
-- `finalize`: freeze the clock topology before route and postRoute
-
-This avoids treating CTS as one opaque 3D optimization step and reduces zig-zag buffering patterns such as `Aupper -> Bufferbottom -> Cupper`.
-
-### Stages
-
-The public target remains `cds-cts`, but it orchestrates four internal stages:
-
-1. `cds-cts-owner-tree`
-2. `cds-cts-receive-opt`
-3. `cds-cts-owner-mixed`
-4. `cds-cts-finalize`
-
-The compatibility wrapper is `scripts_cadence/innovus_3d_cts.tcl`, but the public Makefile targets launch dedicated stage scripts directly. Shared logic lives in `scripts_cadence/cts_stage_common.tcl`.
-
-### Stage Semantics
-
-`cds-cts-owner-tree`
-
-- LEF view: `LEF_FILES_CTS_OWNER`
-- active tier: `CTS_LAYER`
-- fixed tier: the opposite tier
-- `allow_net`: derived internally as `upper-only` or `bottom-only`
-- main commands:
-  - `apply_tier_policy <owner_tier> -fixlib 1 -allow_net <owner_only>`
-  - clear `dont_touch` from all clock nets after the net-class mask is applied
-  - `create_ccopt_clock_tree_spec`
-  - `ccopt_design`
-- outputs:
-  - `4_0_cts_owner_tree.{def,v,sdc}`
-  - `cts_owner_tree.before.nets`
-  - `cts_owner_tree.after.nets`
-
-`cds-cts-receive-opt`
-
-- LEF view: `LEF_FILES_CTS_RECEIVE`
-- active tier: non-`CTS_LAYER`
-- fixed tier: `CTS_LAYER`
-- `allow_net`: derived internally as the opposite tier's `upper-only` or `bottom-only`
-- main commands:
-  - `apply_tier_policy <receive_tier> -fixlib 1 -allow_net <receive_only>`
-  - freeze all clock nets
-  - `optDesign -postCTS -incr`
-- outputs:
-  - `4_1_cts_receive_opt.{def,v,sdc}`
-  - `cts_receive_opt.before.nets`
-  - `cts_receive_opt.after.nets`
-
-`cds-cts-owner-mixed`
-
-- LEF view: `LEF_FILES_CTS_MIXED`
-- active tier: `CTS_LAYER`
-- fixed tier: the opposite tier
-- `allow_net`: `mixed-only`
-- main commands:
-  - `apply_tier_policy <owner_tier> -fixlib 1 -allow_net mixed-only`
-  - freeze all clock nets
-  - `optDesign -postCTS -incr`
-- outputs:
-  - `4_2_cts_owner_mixed.{def,v,sdc}`
-  - `cts_owner_mixed.before.nets`
-  - `cts_owner_mixed.after.nets`
-
-`cds-cts-finalize`
-
-- LEF view: `LEF_FILES_CTS_FINALIZE`
-- no optimization command is run here
-- main commands:
-  - freeze all clock nets
-  - write final `4_cts.{def,v,sdc}`
-- outputs:
-  - `4_3_cts_finalize.{def,v,sdc}`
-  - `4_cts.{def,v,sdc}`
-  - `cts_finalize.nets`
-
-### Reporting
-
-CTS stages emit clock-only cross-tier reports:
-
-- `cts_owner_tree.before.nets`
-- `cts_owner_tree.after.nets`
-- `cts_receive_opt.before.nets`
-- `cts_receive_opt.after.nets`
-- `cts_owner_mixed.before.nets`
-- `cts_owner_mixed.after.nets`
-- `cts_finalize.nets`
-
-These reports are intended to make clock-related cross-tier changes attributable to a specific phase.
-
-## Route
-
-### Goal
-
-Route and postRoute optimization must remain separate phases.
-
-- `routeDesign` is responsible for realizing wires.
-- `optDesign -postRoute` is responsible for RC-aware repair and ECO.
-
-Treating them as a single stage makes it harder to see when extra cross-tier nets are introduced and which LEF/COVER view caused the change.
-
-### Stages
-
-The public target remains `cds-route`, but it orchestrates:
-
-1. `cds-route-only`
-2. `cds-postroute-receive`
-3. `cds-postroute-owner`
-4. `cds-postroute-owner-mixed`
-
-`cds-route-only`
-
-- LEF view: `LEF_FILES_ROUTE_ONLY`
-- performs pure routing
-- writes `5_0_route.{def,v,sdc}`
-- emits before and after cross-tier reports
-
-`cds-postroute-receive`
-
-- LEF view: `LEF_FILES_POSTROUTE_RECEIVE`
-- active tier: non-`CTS_LAYER`
-- fixed tier: `CTS_LAYER`
-- `allow_net`: receive-tier-only
-- keeps the clock tree frozen
-- runs `optDesign -postRoute`
-- emits before and after cross-tier reports
-
-`cds-postroute-owner`
-
-- LEF view: `LEF_FILES_POSTROUTE_OWNER`
-- active tier: `CTS_LAYER`
-- fixed tier: non-`CTS_LAYER`
-- `allow_net`: owner-tier-only
-- keeps the clock tree frozen
-- runs `optDesign -postRoute`
-- emits before and after cross-tier reports
-
-`cds-postroute-owner-mixed`
-
-- LEF view: `LEF_FILES_POSTROUTE_MIXED`
-- active tier: `CTS_LAYER`
-- fixed tier: non-`CTS_LAYER`
-- `allow_net`: `mixed-only`
-- keeps the clock tree frozen
-- runs `optDesign -postRoute`
-- emits before and after cross-tier reports
-- writes the final `5_route.{def,v,sdc}`
-
-### Expected Outcome
-
-The route split is not meant to guarantee that no new cross-tier nets appear. It is meant to make those additions visible, attributable, and easier to constrain away in future iterations.
-
-## Local Development Harness
-
-The flow also includes a local engineering work area under `work.codex/cts_route_lab/`.
-
-This area is intentionally outside the public flow interface. It is used to:
-
-- run syntax and target checks
-- replay one stage at a time
-- compare cross-tier reports between stages
-- iterate on Tcl changes without rerunning the entire full flow
-
-The recommended workflow is:
-
-1. edit one Tcl stage
-2. run the matching smoke script
-3. inspect logs and cross-tier reports
-4. move to the next stage only after the current stage interface is stable
-
-## Robustness Validation with gcd and aes
-
-The staged flow must be validated against a legacy baseline under a deliberately tighter clock. The validation objective is not only to complete the run, but also to show that the staged flow does not inflate additional cross-tier nets while still enabling useful timing repair with a 2D-oriented implementation tool.
-
-### Validation Matrix
-
-The current validation matrix uses three seed cases:
-
-- `nangate45_3D / aes`
-- `nangate45_3D / gcd`
-- `asap7_3D / gcd`
-
-Each case is run twice:
-
-- `baseline`
-- `staged`
-
-The execution order is fixed to get quick feedback first:
-
-1. `nangate45_3D / aes`
-2. `nangate45_3D / gcd`
-3. `asap7_3D / gcd`
-
-### Tight-Clock Method
-
-The robustness test uses a single tight-clock mode:
-
-- `tight07`
-
-The copied SDC for a validation variant is patched by scaling:
-
-- `clk_period_new = clk_period_original * 0.7`
-
-Only the `set clk_period ...` assignment is changed. The remaining SDC content, including `clk_io_pct`, is preserved.
-
-### Seed and Variant Preparation
-
-Validation starts from an existing floorplan checkpoint rather than rerunning synthesis and partition.
-
-For each validation variant:
-
-- copy the required seed checkpoint into a dedicated `FLOW_VARIANT`
-- preserve the original `*_3D.fp.{def,v}` artifacts when available
-- prepare downstream-compatible files:
-  - `1_synth.sdc`
-  - `2_floorplan.sdc`
-  - `2_floorplan.def`
-  - `2_floorplan.v`
-
-This keeps the flow simple and reproducible while avoiding expensive front-end reruns.
-
-### Strategy Definitions
-
-`baseline`
-
-- one upper preCTS optimization pass with `allow_net=all`
-- one bottom preCTS optimization pass with `allow_net=all`
-- final legalize on both tiers
-- legacy monolithic CTS
-- legacy monolithic route plus postRoute
-
-`staged`
+The important net classes are:
 
 - `upper-only`
 - `bottom-only`
-- `mixed-only` on upper
-- `mixed-only` on bottom
-- final legalize on both tiers
-- staged `owner-tree -> receive-opt -> owner-mixed -> finalize` CTS
-- staged `route-only -> postroute-receive -> postroute-owner -> postroute-owner-mixed`
+- `all`
 
-### Metrics
+And the flow-level switches are:
 
-The validation harness records one row per `{case, strategy, stage}` and tracks:
+- `PIN3D_ALLOW_NET_FLOW=on|off`
+- `PIN3D_SPLIT_NET_FLOW=on|off`
 
-- `WNS`
-- `TNS`
-- total DRV count
-- buffer delta between stage input and stage output netlists
-- total cross-tier nets before and after the stage
-- clock-only cross-tier nets before and after CTS or route-related stages
-- routing overflow
-- normalized congestion hotspot area
+Behavior:
 
-Buffer delta is computed from explicit stage netlist snapshots. This is why the flow writes stable before and after netlists for the loop placement stages and final legalize stages.
+- `PIN3D_ALLOW_NET_FLOW=off`
+  - forces the effective allow-net class to `all`
+- `PIN3D_SPLIT_NET_FLOW=off`
+  - keeps the split stage in the graph, but makes it a pass-through stage
 
-### Acceptance Logic
+### 3.4 Placement and optimization helpers
 
-The staged flow is considered healthier than the legacy baseline only if all of the following are true:
+Placement-stage optimization is implemented in:
 
-- the run completes through `cds-restore`
-- stage metrics are present
-- final staged cross-tier net count does not exceed the final legacy cross-tier net count for the same case
-- clock-only cross-tier net count does not increase after `cts_finalize`
+- [place_common.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_cadence/place_common.tcl)
 
-Timing and congestion are comparison metrics rather than single hard pass/fail gates. If the staged flow regresses either of them, the validation report must record that regression explicitly.
+Important commands:
+
+- `pc::setup_basic`
+- `pc::run_place_step`
+  - `place_opt_design`
+- `pc::run_loop_opt_step`
+  - `optDesign -preCTS -incr`
+
+The flow also fixes the inactive tier explicitly with:
+
+- `set_tier_placement_status upper fixed`
+- `set_tier_placement_status bottom fixed`
+
+This is important because LEF view selection alone does not fully prevent the inactive tier from drifting.
+
+### 3.5 Reporting and observability
+
+The shared metric extractor is:
+
+- [extract_report.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_cadence/extract_report.tcl)
+
+Cross-tier reports use the expanded categories:
+
+- `Upper_Bottom`
+- `Upper_IO`
+- `Bottom_IO`
+- `Upper_Bottom_IO`
+- `Unknown_Tier`
+
+This report model is used by:
+
+- split-net before/after reports
+- placement before/after reports
+- CTS clock-only reports
+- route and post-route before/after reports
+- final summary generation
+
+## 4. Make Target Map
+
+### 4.1 Default-path public targets
+
+| Target | Main script | Role |
+|---|---|---|
+| `cds-synth` | `scripts_cadence/run_genus.tcl` | Genus synthesis |
+| `cds-preplace` | `scripts_cadence/innovus_preplace.tcl` | 2D floorplan and pin placement |
+| `cds-tier-partition` | `scripts_cadence/tritonpart_tier_partition.tcl` | TritonPart partitioning inside Cadence flow |
+| `cds-3d-flow-2dpart` | wrapper target | synth + preplace + partition |
+| `cds-pre` | `scripts_cadence/generate_3d_views.py` | 2D-to-3D view generation |
+| `cds-3d-floorplan` | `scripts_cadence/innovus_3d_floorplan.tcl` | 3D floorplan sizing and HBT-capacity preparation |
+| `cds-3d-io` | `scripts_cadence/innovus_3d_io_place.tcl` | 3D IO placement |
+| `cds-3d-split-net` | `scripts_cadence/innovus_3d_split_net.tcl` | mixed-tier net split or pass-through |
+| `cds-place-macro-upper` | `scripts_cadence/innovus_placeMacro_upper.tcl` | upper macro place |
+| `cds-place-macro-bottom` | `scripts_cadence/innovus_placeMacro_bottom.tcl` | bottom macro place |
+| `cds-3d-pdn-only` | wrapper target | bottom PDN then upper PDN |
+| `cds-place-init` | `scripts_cadence/innovus_place3D_init.tcl` | initial 3D place bootstrap |
+| `cds-place-init-upper` | `scripts_cadence/innovus_place3D_init_upper.tcl` | upper incremental init |
+| `cds-place-init-bottom` | `scripts_cadence/innovus_place3D_init_bottom.tcl` | bottom incremental init |
+| `cds-place-upper` | `scripts_cadence/innovus_place3D_upper.tcl` | upper preCTS optimization loop |
+| `cds-place-bottom` | `scripts_cadence/innovus_place3D_bottom.tcl` | bottom preCTS optimization loop |
+| `cds-gp2lg` | `scripts_cadence/handoff_copy_gp2lg.tcl` | tmp-to-legalize handoff copy |
+| `cds-legalize-upper` | `scripts_cadence/innovus_opt_lg_upper.tcl` | upper final legalize |
+| `cds-legalize-bottom` | `scripts_cadence/innovus_opt_lg_bottom.tcl` | bottom final legalize |
+| `cds-cts` | wrapper target | owner-tree + receive-opt + finalize |
+| `cds-route` | `scripts_cadence/innovus_3d_route_legacy.tcl` | current public legacy route |
+| `cds-restore` | `scripts_cadence/innovus_3d_final-re.tcl` | final extraction with ENC restore fallback |
+
+### 4.2 Available alternative or debug targets
+
+| Target | Main script | Notes |
+|---|---|---|
+| `cds-2d_flow` | `scripts_cadence/innovus_2d_flow.tcl` | one-script 2D baseline |
+| `cds-3d-pdn` | `scripts_cadence/innovus_3d_pdn.tcl` | monolithic 3D PDN handoff, not the default commercial path |
+| `cds-cts-legacy` | `scripts_cadence/innovus_3d_cts_legacy.tcl` | legacy CTS baseline |
+| `cds-cts-owner-tree` | `scripts_cadence/innovus_3d_cts_owner_tree.tcl` | internal staged CTS target |
+| `cds-cts-receive-opt` | `scripts_cadence/innovus_3d_cts_receive_opt.tcl` | internal staged CTS target |
+| `cds-cts-finalize` | `scripts_cadence/innovus_3d_cts_finalize.tcl` | internal staged CTS target |
+| `cds-route-new` | wrapper target | route-only + postroute-receive + postroute-owner |
+| `cds-route-only` | `scripts_cadence/innovus_3d_route_only.tcl` | internal staged route target |
+| `cds-postroute-receive` | `scripts_cadence/innovus_3d_postroute_receive.tcl` | internal staged post-route target |
+| `cds-postroute-owner` | `scripts_cadence/innovus_3d_postroute_owner.tcl` | internal staged post-route target |
+| `cds-final` | `scripts_cadence/innovus_3d_final.tcl` | final extraction directly from DEF/netlist |
+
+## 5. Stage-by-Stage Reference
+
+### 5.1 2D bootstrap and partition
+
+| Target | Input | Output | LEF view | Tier strategy | Main commands | Purpose |
+|---|---|---|---|---|---|---|
+| `clean_all` | Existing `logs/`, `reports/`, `results/`, `objects/` | Clean workspace | N/A | N/A | shell cleanup | Reset a run directory before a fresh experiment |
+| `cds-synth` | RTL + original SDC from `designs/...` | `1_synth.v`, `1_synth.sdc` | `LEF_FILES` via `lib_setup.tcl` | No tiering yet | `read_hdl`, `elaborate`, `read_sdc`, `syn_generic`, `syn_map`, `syn_opt`, `write_hdl`, `write_sdc` | Produce the netlist and SDC consumed by downstream 2D and 3D flow |
+| `cds-preplace` | `1_synth.v`, `1_synth.sdc` | `2_2_floorplan_io.def`, `2_2_floorplan_io.v`, `2_2_floorplan_io.enc` | `LEF_FILES` | No tiering yet; pure 2D bootstrap | `init_design`, `floorPlan`, `generateTracks`, `place_pin.tcl`, `place_design` | Build the 2D floorplan and IO-pinned seed used by partition and later 3D conversion |
+| `cds-tier-partition` | `2_2_floorplan_io.def`, `2_2_floorplan_io.v`, `1_synth.sdc` | `partition.txt`, `partition.result.tcl`, `partition.simple_plan.txt` | OpenROAD side, not Innovus LEF launch | Logical upper/bottom partitioning only; no Cadence placement yet | OpenROAD `tritonpart_tier_partition.tcl` sweep | Generate the 2-way partition used to create 3D views |
+| `cds-3d-flow-2dpart` | RTL + design configs | synth + preplace + partition outputs | Wrapper | Wrapper | invokes `cds-synth`, `cds-preplace`, `cds-tier-partition` | Standard 2D bootstrap for the commercial 3D flow |
+| `cds-2d_flow` | `2_2_floorplan_io.def`, `1_synth.sdc` | `5_route.def`, `5_route.v`, `${DESIGN}_postRoute.enc` | `LEF_FILES` | Single-tier 2D baseline | `place_opt_design`, `ccopt_design`, `routeDesign`, `optDesign -postRoute` | One-script 2D reference flow, mainly for baseline comparison |
+
+### 5.2 3D view generation, floorplan, split, macro, and PDN
+
+| Target | Input | Output | LEF view | Tier strategy | Main commands | Purpose |
+|---|---|---|---|---|---|---|
+| `cds-pre` | `2_2_floorplan_io.def`, `2_2_floorplan_io.v`, `partition.txt`, `map.json` | `${DESIGN}_3D.fp.def`, `${DESIGN}_3D.fp.v` | N/A, Python stage | Partition labels are mapped to upper/bottom. Heterogeneous platforms prefer area-based orientation; homogeneous platforms prefer pin-based orientation. | `generate_3d_views.py` rewrites DEF/Verilog and partition orientation | Convert the 2D preplace result into a tier-tagged 3D seed |
+| `cds-3d-pdn` | `${DESIGN}_3D.fp.def`, `${DESIGN}_3D.fp.v`, `1_synth.sdc` | `2_floorplan.def`, `2_floorplan.v`, `2_floorplan.sdc` | `LEF_FILES` | Monolithic 3D floorplan path; not the default launcher path | `init_design`, `defIn`, tier-aware `floorPlan`, `place_pin.tcl`, platform `pdn_config.tcl` | Build a single combined 3D floorplan+PDN handoff |
+| `cds-3d-floorplan` | `${DESIGN}_3D.fp.v`, `1_synth.sdc` | `2_3_floorplan_3d.def`, `2_3_floorplan_3d.v` | `LEF_FILES` | No movement restriction yet; estimates cross-tier pressure before detailed optimization | `extract_cross_tier_nets`, `tier::core_wh_for_max_tier_util`, optional `create_hb_layer_obs`, `floorPlan`, `generateTracks` | Size the 3D core and optionally reserve HBT capacity before later stages |
+| `cds-3d-io` | `2_3_floorplan_3d.def`, `2_3_floorplan_3d.v`, `1_synth.sdc` | `2_4_floorplan_io.def`, `2_4_floorplan_io.v` | `LEF_FILES` | IO-only update on top of the 3D floorplan | `handoff_init_design_from_paths`, `place_pin.tcl` | Rebuild final 3D IO placement after floorplan sizing |
+| `cds-3d-split-net` | `2_4_floorplan_io.def`, `2_4_floorplan_io.v`, `1_synth.sdc` | updated `2_4_floorplan_io.def`, `2_4_floorplan_io.v`, split reports | `LEF_FILES_SPLIT` | Full two-tier visibility. `PIN3D_SPLIT_NET_FLOW=off` keeps the stage but turns it into pass-through. | `extract_cross_tier_nets`, `split_net.tcl`, in-place handoff overwrite | Reduce mixed-tier nets before macro placement and detailed optimization |
+| `cds-place-macro-upper` | `2_4_floorplan_io.def`, `2_4_floorplan_io.v`, `1_synth.sdc` | `2_5_place_macro_upper.def`, `2_5_place_macro_upper.v` | `LEF_FILES_BOTTOM_COVER` | Upper tier active, bottom tier treated as cover | `apply_tier_policy upper -fixlib 1`, `pmu::run_tier_macro_place upper` | Place upper macros while protecting bottom-tier visibility |
+| `cds-place-macro-bottom` | `2_5_place_macro_upper.def`, `2_5_place_macro_upper.v`, `1_synth.sdc` | `2_5_place_macro_bottom.def`, `2_5_place_macro_bottom.v` | `LEF_FILES_UPPER_COVER` | Bottom tier active, upper tier treated as cover | `apply_tier_policy bottom -fixlib 1`, `pmu::run_tier_macro_place bottom` | Place bottom macros after upper macros are fixed |
+| `cds-3d-pdn-only-bottom` | `2_5_place_macro_bottom.def`, `2_5_place_macro_bottom.v`, `1_synth.sdc` | `2_6_floorplan_pdn_bottom.def`, `2_6_floorplan_pdn_bottom.v` | `LEF_FILES_UPPER_COVER` | Bottom tier active, upper tier covered; rows rebuilt using `BOTTOM_SITE` or `PLACE_SITE` | `rebuild_rows_for_site`, platform `pdn_config_bottom.tcl` | Build bottom-tier PDN only |
+| `cds-3d-pdn-only-upper` | `2_6_floorplan_pdn_bottom.def`, `2_6_floorplan_pdn_bottom.v`, `1_synth.sdc` | `2_6_floorplan_pdn.def`, `2_6_floorplan_pdn.v`, aliases `2_floorplan.def`, `2_floorplan.v`, `2_floorplan.sdc` | `LEF_FILES_BOTTOM_COVER` | Upper tier active, bottom tier covered; rows rebuilt using `UPPER_SITE` or `PLACE_SITE` | `rebuild_rows_for_site`, platform `pdn_config_upper.tcl` | Build upper-tier PDN and publish the canonical `2_floorplan.*` handoff |
+| `cds-3d-pdn-only` | wrapper | wrapper | wrapper | wrapper | calls bottom then upper PDN-only targets | The default commercial path for 3D PDN handoff construction |
+
+### 5.3 Placement, outer-loop optimization, and legalization
+
+| Target | Input | Output | LEF view | Tier strategy | Main commands | Purpose |
+|---|---|---|---|---|---|---|
+| `cds-place-init` | `2_floorplan.def`, `2_floorplan.v`, `2_floorplan.sdc` | `${DESIGN}_3D.tmp.def`, `${DESIGN}_3D.tmp.v` | `LEF_FILES_UPPER_COVER` | Upper tier fixed. Bottom tier bootstrapped with requested default allow-net `bottom-only`. | `set_tier_placement_status upper fixed`, `apply_tier_policy bottom -fixlib 1 -allow_net ...`, `place_design` | Produce the initial temp placement handoff |
+| `cds-place-init-upper` | `${DESIGN}_3D.tmp.def`, `${DESIGN}_3D.tmp.v`, `2_floorplan.sdc` | updated `${DESIGN}_3D.tmp.def`, `${DESIGN}_3D.tmp.v` | `LEF_FILES_BOTTOM_COVER` | Bottom tier fixed. Upper tier incremental init with default `upper-only`. | `set_tier_placement_status bottom fixed`, `apply_tier_policy upper -fixlib 1 -allow_net ...`, `pc::run_loop_opt_step init_upper` | Give the upper tier one incremental initialization pass |
+| `cds-place-init-bottom` | `${DESIGN}_3D.tmp.def`, `${DESIGN}_3D.tmp.v`, `2_floorplan.sdc` | updated `${DESIGN}_3D.tmp.def`, `${DESIGN}_3D.tmp.v` | `LEF_FILES_UPPER_COVER` | Upper tier fixed. Bottom tier incremental init with default `bottom-only`. | `set_tier_placement_status upper fixed`, `apply_tier_policy bottom -fixlib 1 -allow_net ...`, `pc::run_loop_opt_step init_bottom` | Give the bottom tier one incremental initialization pass |
+| `cds-place-upper` | `${DESIGN}_3D.tmp.def`, `${DESIGN}_3D.tmp.v`, `2_floorplan.sdc` | updated `${DESIGN}_3D.tmp.def`, `${DESIGN}_3D.tmp.v`, `${DESIGN}_3d_after_upper.enc` | `LEF_FILES_BOTTOM_COVER` | Bottom tier fixed. Requested allow-net comes from `TIER_ALLOW_NET`; current launcher sets `upper-only`. | `apply_tier_policy upper -fixlib 1 -allow_net ...`, `pc::run_place_step` | Upper-tier outer-loop preCTS optimization |
+| `cds-place-bottom` | `${DESIGN}_3D.tmp.def`, `${DESIGN}_3D.tmp.v`, `2_floorplan.sdc` | updated `${DESIGN}_3D.tmp.def`, `${DESIGN}_3D.tmp.v`, `${DESIGN}_3d_after_bottom.enc` | `LEF_FILES_UPPER_COVER` | Upper tier fixed. Requested allow-net comes from `TIER_ALLOW_NET`; current launcher sets `bottom-only`. | `apply_tier_policy bottom -fixlib 1 -allow_net ...`, `pc::run_place_step` | Bottom-tier outer-loop preCTS optimization |
+| `cds-gp2lg` | `${DESIGN}_3D.tmp.def`, `${DESIGN}_3D.tmp.v`, `2_floorplan.sdc` | `${DESIGN}_3D.lg.def`, `${DESIGN}_3D.lg.v` | N/A, Tcl copy stage | No optimization; handoff normalization only | `handoff_copy_gp2lg.tcl` | Publish the legalize-stage input names cleanly |
+| `cds-legalize-upper` | `${DESIGN}_3D.lg.def`, `${DESIGN}_3D.lg.v`, `2_floorplan.sdc` | updated `${DESIGN}_3D.lg.def`, `${DESIGN}_3D.lg.v`, aliases `3_place.def`, `3_place.v`, `3_place.sdc` | `LEF_FILES_BOTTOM_COVER` | Bottom tier fixed. Default requested allow-net is forced to `upper-only`. | `apply_tier_policy upper -fixlib 1 -allow_net ...`, `pc::run_loop_opt_step legalize_upper`, `checkPlace` | Final upper-tier incremental legalization and polish |
+| `cds-legalize-bottom` | `${DESIGN}_3D.lg.def`, `${DESIGN}_3D.lg.v`, `2_floorplan.sdc` | updated `${DESIGN}_3D.lg.def`, `${DESIGN}_3D.lg.v`, aliases `3_place.def`, `3_place.v`, `3_place.sdc` | `LEF_FILES_UPPER_COVER` | Upper tier fixed. Default requested allow-net is forced to `bottom-only`. | `apply_tier_policy bottom -fixlib 1 -allow_net ...`, `pc::run_loop_opt_step legalize_bottom`, `checkPlace` | Final bottom-tier incremental legalization and polish |
+
+### 5.4 Clock tree synthesis
+
+| Target | Input | Output | LEF view | Tier strategy | Main commands | Purpose |
+|---|---|---|---|---|---|---|
+| `cds-cts` | `3_place.def`, `3_place.v`, `3_place.sdc` | `4_cts.def`, `4_cts.v`, `4_cts.sdc` | Wrapper over staged subtargets | `CTS_LAYER` chooses owner tier; receive tier is the opposite | invokes owner-tree, receive-opt, finalize | Public staged CTS flow |
+| `cds-cts-owner-tree` | `3_place.def`, `3_place.v`, `3_place.sdc` | `4_0_cts_owner_tree.def`, `4_0_cts_owner_tree.v`, `4_0_cts_owner_tree.sdc` | `LEF_FILES_CTS_OWNER` | Active tier = `CTS_LAYER`, fixed tier = opposite, allow-net = owner-only | `cts_init_design_from_paths`, `apply_tier_policy ...`, `create_ccopt_clock_tree_spec`, `ccopt_design` | Build the owner-tier clock tree |
+| `cds-cts-receive-opt` | `4_0_cts_owner_tree.def`, `4_0_cts_owner_tree.v`, `4_0_cts_owner_tree.sdc` | `4_1_cts_receive_opt.def`, `4_1_cts_receive_opt.v`, `4_1_cts_receive_opt.sdc` | `LEF_FILES_CTS_RECEIVE` | Active tier = receive tier, fixed tier = owner tier, allow-net = receive-only | `apply_tier_policy ...`, `optDesign -postCTS -incr` | Repair receive-side clock-related logic without rebuilding the owner tree |
+| `cds-cts-finalize` | `4_1_cts_receive_opt.def`, `4_1_cts_receive_opt.v`, `4_1_cts_receive_opt.sdc` | `4_3_cts_finalize.def`, `4_3_cts_finalize.v`, `4_3_cts_finalize.sdc`, aliases `4_cts.def`, `4_cts.v`, `4_cts.sdc` | `LEF_FILES_CTS_FINALIZE` | No new active tier optimization; reporting and handoff finalization only | `cts_init_design_from_paths`, `extract_cross_tier_nets`, `cts_write_stage_outputs` | Freeze and publish the final CTS handoff |
+| `cds-cts-legacy` | `3_place.def`, `3_place.v`, `3_place.sdc` | `4_1_cts.def`, `4_1_cts.v`, `4_1_cts.sdc`, aliases `4_cts.def`, `4_cts.v`, `4_cts.sdc` | `LEF_FILES_CTS` | Single-pass owner-side CTS baseline | `apply_tier_policy`, `create_ccopt_clock_tree_spec`, `ccopt_design` | Legacy robustness/baseline CTS |
+
+### 5.5 Route and final reporting
+
+| Target | Input | Output | LEF view | Tier strategy | Main commands | Purpose |
+|---|---|---|---|---|---|---|
+| `cds-route` | `4_cts.def`, `4_cts.v`, `4_cts.sdc` | `5_route.def`, `5_route.v`, `5_route.sdc`, `${DESIGN}_postRoute.enc.dat` | `LEF_FILES_ROUTE` | Current public legacy route. After pure route, both tiers are fixed and owner-tier postRoute repair is applied. | `routeDesign`, `apply_tier_policy [cts_owner_tier]`, `optDesign -postRoute` | Public route target currently used by the commercial launcher |
+| `cds-route-new` | `4_cts.def`, `4_cts.v`, `4_cts.sdc` | `5_route.def`, `5_route.v`, `5_route.sdc` | Wrapper over staged route subtargets | Receive-side then owner-side postRoute | invokes route-only, postroute-receive, postroute-owner | Alternative staged route flow |
+| `cds-route-only` | `4_cts.def`, `4_cts.v`, `4_cts.sdc` | `5_0_route.def`, `5_0_route.v`, `5_0_route.sdc`, `${DESIGN}_route_only.enc.dat` | `LEF_FILES_ROUTE_ONLY` | No tier-specific repair yet; pure wiring realization | `route_init_design_from_paths`, `route_apply_router_setup`, `routeDesign` | Separate wire realization from post-route ECO |
+| `cds-postroute-receive` | `5_0_route.def`, `5_0_route.v`, `5_0_route.sdc`, `${DESIGN}_route_only.enc.dat` | `5_1_postroute_receive.def`, `5_1_postroute_receive.v`, `5_1_postroute_receive.sdc` | `LEF_FILES_POSTROUTE_RECEIVE` | Active tier = receive tier, fixed tier = owner tier, allow-net = receive-only | `restoreDesign` if ENC exists, `apply_tier_policy`, `optDesign -postRoute -incr` | Receive-side post-route ECO |
+| `cds-postroute-owner` | `5_1_postroute_receive.def`, `5_1_postroute_receive.v`, `5_1_postroute_receive.sdc` | `5_2_postroute_owner.def`, `5_2_postroute_owner.v`, `5_2_postroute_owner.sdc`, aliases `5_route.def`, `5_route.v`, `5_route.sdc` | `LEF_FILES_POSTROUTE_OWNER` | Active tier = owner tier, fixed tier = receive tier, allow-net = owner-only | `apply_tier_policy`, `optDesign -postRoute -incr` | Owner-side post-route ECO and final route handoff publication |
+| `cds-final` | `5_route.def`, `5_route.v`, `5_route.sdc` | `6_final.png`, `final_metrics.csv`, `final_summary.txt` | Reopens routed handoff using `LEF_FILES` | No optimization; report-only | `init_design`, `defIn`, `extract_report -postRoute`, `dumpPictures` | Extract final metrics directly from DEF/netlist |
+| `cds-restore` | `5_route.def`, `5_route.v`, `5_route.sdc`, `${DESIGN}_postRoute.enc.dat` | `6_final.png`, `final_metrics.csv`, `final_summary.txt` | Reopens routed handoff using `LEF_FILES` | No optimization; report-only with ENC restore preference | `restoreDesign` if ENC exists else `init_design` + `defIn`, then `extract_report -postRoute` | Preferred final reporting target in the commercial launcher |
+
+## 6. How Optimization Is Implemented
+
+The current flow does not rely on one single optimizer call. It implements optimization as a coordinated strategy across partitioning, view selection, tier constraints, stage sequencing, and metric feedback.
+
+### 6.1 Optimization starts before Innovus
+
+The optimization pipeline begins with:
+
+- `cds-synth`
+- `cds-preplace`
+- `cds-tier-partition`
+- `cds-pre`
+
+This is important because the later 3D physical stages do not start from an unstructured dual-tier design. They start from:
+
+- a synthesized netlist
+- a preplaced 2D DEF
+- a TritonPart partition result
+- a rewritten 3D DEF/Verilog with tier-tagged views
+
+So the first optimization layer is the logical partition itself.
+
+### 6.2 LEF view selection is an optimization knob
+
+The Makefile deliberately swaps LEF bundles between stages. This is not file plumbing. It is how the flow controls what Innovus can physically optimize.
+
+Examples:
+
+- `cds-place-upper` uses `LEF_FILES_BOTTOM_COVER`
+  - upper tier active
+  - bottom tier treated as cover/fixed
+- `cds-place-bottom` uses `LEF_FILES_UPPER_COVER`
+  - bottom tier active
+  - upper tier treated as cover/fixed
+- `cds-cts-owner-tree` uses `LEF_FILES_CTS_OWNER`
+  - owner tier active according to `CTS_LAYER`
+- `cds-postroute-receive` uses `LEF_FILES_POSTROUTE_RECEIVE`
+  - receive tier active after routing
+
+This means the optimizer sees a deliberately restricted physical world in each stage.
+
+### 6.3 Tier constraints are applied explicitly
+
+The flow never assumes the inactive tier will stay still by itself. It combines:
+
+- `apply_tier_policy <active_tier> -fixlib 1 -allow_net ...`
+- `set_tier_placement_status <inactive_tier> fixed`
+
+This creates the optimization window for the current pass:
+
+- library availability is biased toward the active tier
+- inactive COVER cells are fixed
+- fillers and sites are switched for the active tier
+- only selected net classes are movable when allow-net is enabled
+
+### 6.4 Allow-net and split-net implement the co-optimization policy
+
+There are two independent high-level switches:
+
+- `PIN3D_ALLOW_NET_FLOW`
+- `PIN3D_SPLIT_NET_FLOW`
+
+`PIN3D_ALLOW_NET_FLOW` changes whether stage-local `allow_net` intent is honored or collapsed to `all`.
+
+`PIN3D_SPLIT_NET_FLOW` changes whether the split stage actually inserts split buffers and rewrites the post-IO handoff, or stays as a pass-through report-only stage.
+
+This is the main mechanism used in the current commercial comparison experiments.
+
+### 6.5 PreCTS optimization is intentionally staged and iterative
+
+The current launcher runs:
+
+1. `cds-place-init`
+2. `cds-place-init-upper`
+3. `cds-place-init-bottom`
+4. outer loop of:
+   - `cds-place-upper`
+   - `cds-place-bottom`
+5. `cds-gp2lg`
+6. `cds-legalize-upper`
+7. `cds-legalize-bottom`
+
+This means preCTS optimization is not one placement call. It is an alternating upper/bottom sequence with repeated handoffs and measurement points.
+
+### 6.6 CTS is split by semantic ownership
+
+The staged CTS flow is:
+
+1. `cds-cts-owner-tree`
+2. `cds-cts-receive-opt`
+3. `cds-cts-finalize`
+
+This separates:
+
+- owner-tier tree construction
+- receive-tier repair
+- final publication
+
+Instead of letting one opaque CTS pass introduce and repair everything at once.
+
+### 6.7 Route can also be staged, even though the current launcher uses the legacy route target
+
+The repository contains:
+
+- `cds-route-only`
+- `cds-postroute-receive`
+- `cds-postroute-owner`
+
+This staged route path exists so wire realization and post-route tier-specific ECO can be separated when needed.
+
+The current commercial launcher still uses `cds-route` for robustness, but the staged route path is already implemented and documented.
+
+### 6.8 Optimization is feedback-driven by reports
+
+The flow continuously measures:
+
+- split-net before/after cross-tier reports
+- placement before/after cross-tier reports
+- CTS clock-only cross-tier reports
+- route before/after cross-tier reports
+- final summary metrics
+
+The report model distinguishes:
+
+- `Upper_Bottom`
+- `Upper_IO`
+- `Bottom_IO`
+- `Upper_Bottom_IO`
+- `Unknown_Tier`
+
+This is how the flow turns each stage into an observable optimization step instead of a black box.
+
+## 7. Practical Reading Order
+
+If you need to debug or extend the commercial flow, the most useful reading order is:
+
+1. [test/commercial/CDS_3D_NEW_FLOW.sh](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/test/commercial/CDS_3D_NEW_FLOW.sh)
+2. [Makefile](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/Makefile)
+3. [handoff_manager.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_cadence/handoff_manager.tcl)
+4. [tier_cell_policy.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_cadence/tier_cell_policy.tcl)
+5. [place_common.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_cadence/place_common.tcl)
+6. [cts_stage_common.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_cadence/cts_stage_common.tcl)
+7. [route_stage_common.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_cadence/route_stage_common.tcl)
+8. The stage entry scripts for the stage you want to change
+
+This order matches the real control flow:
+
+- shell launcher
+- `make` orchestration
+- handoff contract
+- tier and LEF policy
+- stage-specific tool commands
