@@ -133,6 +133,17 @@ proc cts_apply_common_ccopt_setup {} {
   set_ccopt_property post_conditioning_enable_routing_eco 1
   set_ccopt_property -cts_def_lock_clock_sinks_after_routing true
   setOptMode -unfixClkInstForOpt false
+  cts_lock_all_macros
+}
+
+proc cts_lock_all_macros {} {
+  if {![llength [info commands pmu::set_tier_macro_status]]} {
+    puts "INFO: CTS macro lock skipped because pmu::set_tier_macro_status is unavailable."
+    return
+  }
+  foreach tier {upper bottom} {
+    pmu::set_tier_macro_status $tier fixed
+  }
 }
 
 proc cts_write_handoff_manifest {path label} {

@@ -26,7 +26,7 @@ handoff_log_paths $stage_paths
 load_design $DEF_IN $SDC_IN "Starting PDN Generation"
 source $::env(OPENROAD_SCRIPTS_DIR)/placement_utils.tcl
 source $::env(OPENROAD_SCRIPTS_DIR)/floorplan_utils.tcl
-apply_tier_policy upper -fixlib 1 -allow_net all -protect_split_buffers 0
+apply_tier_policy upper -fixlib 1 -allow_net all
 
 set pdn_script ""
 if {[info exists ::env(PDN_TCL_UPPER)] && $::env(PDN_TCL_UPPER) ne ""} {

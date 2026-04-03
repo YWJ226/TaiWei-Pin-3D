@@ -1,6 +1,6 @@
 # ============================================================
 # cts.tcl
-# Run the owner-tier OpenROAD CTS stage.
+# Run the owner-tier OpenROAD CTS owner-tree stage.
 # ============================================================
 
 # Core setup
@@ -32,64 +32,95 @@ handoff_log_paths $stage_paths
 utl::set_metrics_stage "cts__{}"
 load_design $DEF_IN $SDC_IN "Starting CTS..."
 source $::env(OPENROAD_SCRIPTS_DIR)/placement_utils.tcl
+source $::env(OPENROAD_SCRIPTS_DIR)/cts_stage_common.tcl
 set before_report [file join $LOG_DIR "cts.before.nets"]
 set after_report [file join $LOG_DIR "cts.after.nets"]
 set summary_report [file join $LOG_DIR "cts.cross_tier.summary.rpt"]
+set mixed_before_report [file join $LOG_DIR "cts.mixed_fanout.before.nets"]
+set mixed_after_report [file join $LOG_DIR "cts.mixed_fanout.after.nets"]
+set mixed_summary_report [file join $LOG_DIR "cts.mixed_fanout.summary.rpt"]
+set split_before_report [file join $LOG_DIR "cts.split.before.rpt"]
+set split_after_report [file join $LOG_DIR "cts.split.after.rpt"]
+set split_summary_report [file join $LOG_DIR "cts.split.summary.rpt"]
+set attribution_report [file join $LOG_DIR "cts.cross_tier.delta.rpt"]
 set clock_before_report [file join $LOG_DIR "cts.clock.before.nets"]
 set clock_after_report [file join $LOG_DIR "cts.clock.after.nets"]
 set clock_summary_report [file join $LOG_DIR "cts.clock.cross_tier.summary.rpt"]
 
-set cts_layer [or_cts_owner_tier]
-set allow_net_class [expr {$cts_layer eq "upper" ? "upper-only" : "bottom-only"}]
-apply_tier_policy $cts_layer -fixlib 1 -allow_net $allow_net_class  -skip_clock_nets 1 -protect_split_buffers 0
+set active_tier [or_cts_owner_tier]
+set fixed_tier [or_cts_receive_tier]
+set requested_allow_net [or_cts_requested_allow_net $active_tier]
+set effective_allow_net [or_cts_effective_allow_net $active_tier]
+or_cts_report_stage_banner "owner-tree" $active_tier $fixed_tier $requested_allow_net $effective_allow_net
+or_cts_set_fixed_tier_status $fixed_tier FIRM
+apply_tier_policy $active_tier -fixlib 1 -allow_net $effective_allow_net -skip_clock_nets 1
 report_cross_tier_snapshot $before_report -label "cts before"
+report_mixed_fanout_snapshot $mixed_before_report -label "cts before"
+report_split_structure_snapshot $split_before_report -label "cts before"
 report_cross_tier_snapshot $clock_before_report -label "cts clock before" -clock_only 1
 
-log_cmd repair_clock_inverters
-
-set cts_args [list \
-  -sink_clustering_enable \
-  -repair_clock_nets]
-append_env_var cts_args CTS_BUF_DISTANCE -distance_between_buffers 1
-append_env_var cts_args CTS_CLUSTER_SIZE -sink_clustering_size 1
-append_env_var cts_args CTS_CLUSTER_DIAMETER -sink_clustering_max_diameter 1
-append_env_var cts_args CTS_BUF_LIST -buf_list 1
-append_env_var cts_args CTS_LIB_NAME -library 1
-
-if {[env_var_exists_and_non_empty CTS_ARGS]} {
-  set cts_args $::env(CTS_ARGS)
+set repair_clock_inverters_enable 0
+if {[info exists ::env(OPENROAD_CTS_REPAIR_CLOCK_INVERTERS)]} {
+  set repair_clock_inverters_enable $::env(OPENROAD_CTS_REPAIR_CLOCK_INVERTERS)
+}
+if {$repair_clock_inverters_enable} {
+  log_cmd repair_clock_inverters
+} else {
+  puts "INFO(OR): OPENROAD_CTS_REPAIR_CLOCK_INVERTERS=0, skipping repair_clock_inverters."
 }
 
-log_cmd clock_tree_synthesis {*}$cts_args
+set cts_args [or_cts_common_args]
 
-utl::push_metrics_stage "cts__{}__pre_repair_timing"
-estimate_parasitics -placement
-utl::pop_metrics_stage
+log_cmd clock_tree_synthesis {*}$cts_args
 
 set_placement_padding -global \
   -left $::env(CELL_PAD_IN_SITES_DETAIL_PLACEMENT) \
   -right $::env(CELL_PAD_IN_SITES_DETAIL_PLACEMENT)
 
-log_cmd repair_clock_nets
-catch {log_cmd detailed_placement}
-estimate_parasitics -placement
-
-if {![info exists ::env(SKIP_CTS_REPAIR_TIMING)]} {
-  set ::env(SKIP_CTS_REPAIR_TIMING) 0
+set owner_repair_clock_nets 0
+if {[info exists ::env(OPENROAD_CTS_OWNER_REPAIR_CLOCK_NETS)]} {
+  set owner_repair_clock_nets $::env(OPENROAD_CTS_OWNER_REPAIR_CLOCK_NETS)
 }
-if {!$::env(SKIP_CTS_REPAIR_TIMING)} {
-  set ::env(SKIP_PIN_SWAP) 1
+if {$owner_repair_clock_nets} {
+  log_cmd repair_clock_nets
+} else {
+  puts "INFO(OR): OPENROAD_CTS_OWNER_REPAIR_CLOCK_NETS=0, skipping extra owner-tree repair_clock_nets."
+}
+set result [catch {detailed_placement} msg]
+if {$result != 0} {
+  save_progress 4_0_cts_error
+  puts "Detailed placement failed in CTS owner-tree: $msg"
+  exit $result
+}
+utl::push_metrics_stage "cts__{}__owner_tree"
+estimate_parasitics -placement
+utl::pop_metrics_stage
+check_placement -verbose
+
+if {![info exists ::env(OPENROAD_CTS_OWNER_REPAIR_TIMING)]} {
+  set ::env(OPENROAD_CTS_OWNER_REPAIR_TIMING) 0
+}
+if {$::env(OPENROAD_CTS_OWNER_REPAIR_TIMING)} {
   repair_timing_helper
   set result [catch {detailed_placement} msg]
   if {$result != 0} {
     save_progress 4_0_cts_error
-    puts "Detailed placement failed in CTS: $msg"
+    puts "Detailed placement failed in CTS owner-tree repair: $msg"
     exit $result
   }
+  estimate_parasitics -placement
   check_placement -verbose
+} else {
+  puts "INFO(OR): OPENROAD_CTS_OWNER_REPAIR_TIMING=0, skipping owner-tree repair_timing."
 }
 
+or_cts_set_fixed_tier_status $fixed_tier PLACED
+
+pin3d_metrics_invalidate_cache
 report_cross_tier_transition $summary_report $before_report $after_report -label "cts"
+report_mixed_fanout_transition $mixed_summary_report $mixed_before_report $mixed_after_report -label "cts"
+report_split_structure_transition $split_summary_report $split_before_report $split_after_report -label "cts"
+report_cross_tier_delta_attribution $attribution_report $before_report $after_report -label "cts"
 report_cross_tier_transition $clock_summary_report $clock_before_report $clock_after_report -label "cts clock" -clock_only 1
 
 source_env_var_if_exists POST_CTS_TCL

@@ -65,6 +65,7 @@ if {[pin3d_split_net_flow_enabled]} {
   puts $summary_fh "mode disabled_pass_through"
   puts $summary_fh "candidate_nets 0"
   puts $summary_fh "mixed_tier_nets 0"
+  puts $summary_fh "mixed_fanout_nets 0"
   puts $summary_fh "split_nets 0"
   puts $summary_fh "skipped_nets 0"
   puts $summary_fh "processed_residual 0"

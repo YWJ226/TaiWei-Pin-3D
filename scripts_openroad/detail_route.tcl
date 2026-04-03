@@ -91,6 +91,7 @@ if {![design_is_routed]} {
   error "Design has unrouted nets."
 }
 
+pin3d_metrics_invalidate_cache
 report_cross_tier_transition $summary_report $before_report $after_report -label "route"
 report_cross_tier_transition $clock_summary_report $clock_before_report $clock_after_report -label "route clock" -clock_only 1
 

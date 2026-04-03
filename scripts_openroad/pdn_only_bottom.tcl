@@ -25,7 +25,7 @@ handoff_bind_stage_io $stage_paths
 handoff_log_paths $stage_paths
 load_design $DEF_IN $SDC_IN "Starting PDN bottom preparation"
 source $::env(OPENROAD_SCRIPTS_DIR)/placement_utils.tcl
-apply_tier_policy bottom -fixlib 1 -allow_net all -protect_split_buffers 0
+apply_tier_policy bottom -fixlib 1 -allow_net all
 
 set pdn_script ""
 if {[info exists ::env(PDN_TCL_BOTTOM)] && $::env(PDN_TCL_BOTTOM) ne ""} {

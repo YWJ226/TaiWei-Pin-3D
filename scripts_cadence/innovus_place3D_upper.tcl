@@ -30,6 +30,7 @@ set sdc $SDC_IN
 # Additional setup
 source $::env(CADENCE_SCRIPTS_DIR)/mmmc_setup.tcl
 source $::env(CADENCE_SCRIPTS_DIR)/place_common.tcl
+source $::env(CADENCE_SCRIPTS_DIR)/place_macro_util.tcl
 handoff_log_paths $stage_paths
 
 handoff_init_design_from_paths $stage_paths
@@ -54,12 +55,14 @@ if {$stage_tag eq ""} {
 _report_allow_net_resolution "place-upper" $requested_allow_net $effective_allow_net
 saveNetlist $before_netlist
 extract_cross_tier_nets $before_report
+pmu::set_all_tier_macros_fixed
 set_tier_placement_status bottom fixed
 apply_tier_policy upper -fixlib 1 -allow_net $effective_allow_net
 
 pc::setup_basic
 pc::run_place_step $loop_stage
 
+pmu::set_all_tier_macros_fixed
 set_tier_placement_status bottom placed
 extract_cross_tier_nets $after_report
 handoff_write_stage_outputs $stage_paths \

@@ -126,10 +126,12 @@ run_make ord-legalize-bottom
 
 # input: 3_place.def/.v/.sdc
 # output: 4_0_cts.def/.v/.sdc
+# note: owner-tree CTS stage, receive tier is fixed
 run_make ord-cts
 
 # input: 4_0_cts.def/.v/.sdc
 # output: 4_cts.def/.v/.sdc
+# note: receive-opt CTS stage, owner tier is fixed
 run_make ord-cts-post
 
 # input: 4_cts.def/.v/.sdc

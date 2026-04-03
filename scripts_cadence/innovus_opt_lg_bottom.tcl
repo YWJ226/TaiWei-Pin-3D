@@ -30,6 +30,7 @@ set sdc $SDC_IN
 # Additional setup
 source $::env(CADENCE_SCRIPTS_DIR)/mmmc_setup.tcl
 source $::env(CADENCE_SCRIPTS_DIR)/place_common.tcl
+source $::env(CADENCE_SCRIPTS_DIR)/place_macro_util.tcl
 handoff_log_paths $stage_paths
 
 handoff_init_design_from_paths $stage_paths
@@ -45,6 +46,7 @@ if {$requested_allow_net eq "all"} {
 set effective_allow_net [_effective_allow_net_class $requested_allow_net]
 _report_allow_net_resolution "legalize-bottom" $requested_allow_net $effective_allow_net
 
+pmu::set_all_tier_macros_fixed
 set_tier_placement_status upper fixed
 saveNetlist [file join $RESULTS_DIR "${DESIGN}_3D.legalize_bottom.before.v"]
 extract_cross_tier_nets [file join $LOG_DIR "legalize_bottom.before.nets"]
@@ -53,6 +55,7 @@ pc::setup_basic
 pc::run_loop_opt_step legalize_bottom
 checkPlace
 
+pmu::set_all_tier_macros_fixed
 set_tier_placement_status upper placed
 extract_cross_tier_nets [file join $LOG_DIR "legalize_bottom.after.nets"]
 saveNetlist [file join $RESULTS_DIR "${DESIGN}_3D.legalize_bottom.after.v"]

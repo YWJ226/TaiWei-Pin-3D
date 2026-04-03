@@ -6,7 +6,7 @@ This document describes the current OpenROAD 3D commercial-style flow implemente
 
 - public flow targets come from [Makefile](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/Makefile)
 - stage handoff contracts come from [handoff_manager.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_openroad/handoff_manager.tcl)
-- tier and allow-net policy come from [placement_utils.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_openroad/placement_utils.tcl)
+- tier and allow-net policy come from [placement_utils.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_openroad/placement_utils.tcl) and [placement_tier_metrics_policy.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_openroad/placement_tier_metrics_policy.tcl)
 - launchers come from [test/openroad/ORD_3D_NEW_FLOW.sh](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/test/openroad/ORD_3D_NEW_FLOW.sh) and [test/openroad/ORD_3D_ALLOW_NET_MATRIX.sh](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/test/openroad/ORD_3D_ALLOW_NET_MATRIX.sh)
 
 The goal is to make the OpenROAD flow structurally parallel to the Cadence flow:
@@ -72,6 +72,30 @@ ord-final
 - `ord-preplace`
 - `ord-tier-partition`
 
+## Script Structure
+
+Several heavy Tcl files have been split into lighter entry files plus sourced helper implementations. The public stage targets are unchanged; only internal file organization changed.
+
+Current split pairs:
+
+- [placement_utils.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_openroad/placement_utils.tcl) -> [placement_tier_metrics_policy.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_openroad/placement_tier_metrics_policy.tcl)
+- [split_net.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_openroad/split_net.tcl) -> [split_net_impl.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_openroad/split_net_impl.tcl)
+- [io_place.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_openroad/io_place.tcl) -> [io_place_helpers.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_openroad/io_place_helpers.tcl)
+- [tier_partition.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_openroad/tier_partition.tcl) -> [tier_partition_helpers.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_openroad/tier_partition_helpers.tcl)
+
+Each entry file remains the canonical stage-facing interface. The helper file is sourced only if the needed proc set has not already been loaded.
+
+Recent `gcd` smoke checks used to validate the split/source chain:
+
+- [openroad_tclsplit_gcd_20260403_r1](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/logs/asap7_3D/gcd/openroad_tclsplit_gcd_20260403_r1)
+  - validated `placement_utils -> placement_tier_metrics_policy`
+  - validated `split_net -> split_net_impl`
+  - reached `ord-3d-split-net`, macro stages, PDN, and `ord-place-init`
+- [openroad_tclsplit_gcd_20260403_r2](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/logs/asap7/gcd/openroad_tclsplit_gcd_20260403_r2)
+  - validated `io_place -> io_place_helpers`
+  - validated `tier_partition -> tier_partition_helpers`
+  - ran through 2D synth, floorplan, IO placement, and TritonPart helper loading before the smoke was intentionally stopped
+
 ## Handoff Management
 
 OpenROAD stage handoffs are centralized in:
@@ -126,7 +150,8 @@ The OpenROAD Makefile uses the same LEF-view concept as the Cadence flow.
 | `LEF_FILES_SPLIT` | Full 3D LEF visibility for front-end 3D construction and split-net |
 | `LEF_FILES_BOTTOM_COVER` | Bottom tier is protected; upper tier is the active optimization side |
 | `LEF_FILES_UPPER_COVER` | Upper tier is protected; bottom tier is the active optimization side |
-| `LEF_FILES_NONE_CTS` | Non-owner CTS view used for post-CTS repair |
+| `LEF_FILES_CTS_OWNER` | Owner-tree CTS view |
+| `LEF_FILES_CTS_RECEIVE` | Receive-opt CTS view |
 | `LEF_FILES` | Full LEF visibility for route and final report |
 
 Applied by stage:
@@ -148,8 +173,8 @@ Applied by stage:
 | `ord-gp2lg` | handoff copy only |
 | `ord-legalize-upper` | `LEF_FILES_BOTTOM_COVER` |
 | `ord-legalize-bottom` | `LEF_FILES_UPPER_COVER` |
-| `ord-cts` | `LEF_FILES_CTS` |
-| `ord-cts-post` | `LEF_FILES_NONE_CTS` |
+| `ord-cts` | `LEF_FILES_CTS_OWNER` |
+| `ord-cts-post` | `LEF_FILES_CTS_RECEIVE` |
 | `ord-route` | `LEF_FILES` |
 | `ord-final` | `LEF_FILES` |
 
@@ -158,17 +183,18 @@ Applied by stage:
 The OpenROAD tier policy is implemented in:
 
 - [placement_utils.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_openroad/placement_utils.tcl)
+- [placement_tier_metrics_policy.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_openroad/placement_tier_metrics_policy.tcl)
 
-It provides:
+It provides four pieces of control:
 
-- instance-level `set_dont_touch` by master pattern
 - library-side `set_dont_use`
 - per-net `set_dont_touch` / `unset_dont_touch`
-- requested vs effective allow-net resolution
+- row/site rebuild after tier switch
+- split-topology protection hooks
 
-### Net optimization classes
+### Low-level net classes
 
-OpenROAD nets are classified into:
+The physical classifier in OpenROAD still uses the same four structural classes:
 
 - `upper_only`
 - `bottom_only`
@@ -185,11 +211,29 @@ Resolution rule:
 - `PIN3D_ALLOW_NET_FLOW=off` forces effective allow-net to `all`
 - otherwise `TIER_ALLOW_NET` is honored
 
-Meaning:
+Meaning of the raw mask:
 
 - `upper-only`: unlock `upper_only` and `mixed`, lock `bottom_only` and `unknown`
 - `bottom-only`: unlock `bottom_only` and `mixed`, lock `upper_only` and `unknown`
 - `all`: unlock `upper_only`, `bottom_only`, and `mixed`, lock `unknown`
+
+### Current co-optimization policy
+
+The current OpenROAD strategy does **not** try to solve 3D optimization by globally locking all `mixed` nets. That was rejected because it hurts timing, blocks DRV repair, and defeats the point of split-net optimization.
+
+Instead the flow uses three practical optimization families:
+
+- `clock nets`
+- `split-managed data nets`
+- `regular data nets`
+
+Policy:
+
+- `clock nets` are exempted from tier locking during `ord-cts` and `ord-cts-post` via `-skip_clock_nets 1`
+- `regular data nets` are still left available to the tool under the normal owner-tier mask
+- `split-managed data nets` are tracked and reported explicitly, but they are no longer force-repaired after every active stage
+
+This keeps normal mixed-net optimization available while still measuring whether the intended split topology survives later optimization.
 
 ### Stage-level policy
 
@@ -200,10 +244,12 @@ Meaning:
 | `ord-place-bottom` | `bottom-only` |
 | `ord-legalize-upper` | `upper-only` |
 | `ord-legalize-bottom` | `bottom-only` |
-| `ord-cts` | owner-tier-only, derived from `CTS_LAYER` |
-| `ord-cts-post` | opposite-tier-only, derived from `CTS_LAYER` |
+| `ord-cts` | owner-tier-only, derived from `CTS_LAYER`, with clock-net exemption |
+| `ord-cts-post` | receive-tier-only, derived as the opposite of `CTS_LAYER`, with clock-net exemption |
 
-`apply_tier_policy` rebuilds rows by default after switching tier context. This is now the intended behavior for OpenROAD 3D stages, including macro placement, split PDN, CTS, route, and final reporting, because follow-pin rails and tier-site consistency depend on the rebuilt row pattern.
+`apply_tier_policy` rebuilds rows by default after switching tier context. This is the intended behavior for OpenROAD 3D stages, including macro placement, split PDN, CTS, route, and final reporting, because follow-pin rails and tier-site consistency depend on the rebuilt row pattern.
+
+The current active optimization stages do not rely on blanket split-buffer `dont_touch`. The intended preservation mechanism is now the split topology itself plus stage-side reporting, not automatic Tcl repair after each stage.
 
 ## Split-Net Strategy
 
@@ -211,26 +257,123 @@ Split-net is now a real public stage:
 
 - `ord-3d-split-net`
 - script: [split_net_stage.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_openroad/split_net_stage.tcl)
-- algorithm helper: [split_net.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_openroad/split_net.tcl)
+- algorithm helper: [split_net.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_openroad/split_net.tcl) and [split_net_impl.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_openroad/split_net_impl.tcl)
 
 Behavior:
 
 - input and output are both `2_4_floorplan_io.def/.v`
 - the stage edits the post-IO handoff in place
 - `PIN3D_SPLIT_NET_FLOW=off` converts the stage into pass-through mode
+- the pass inserts an ordinary tier-local `BUF*`, not a special 1-input/2-output splitter cell
 
-Reports:
+### Split intent
+
+For a mixed data net, the intended topology is:
+
+- original net keeps the driver, retained sinks, and split-buffer input
+- branch net is driven only by the split-buffer output
+- moved sinks are isolated behind that branch net
+
+This is the same high-level intent as the Cadence flow: convert one uncontrolled mixed fanout into one controlled split boundary plus tier-local fanout on the moved side.
+
+### Split manifest
+
+Successful split actions are written into:
+
+- `pin3d_split_manifest.list`
+
+Each record includes:
+
+- `original_net`
+- `branch_net`
+- `split_inst`
+- `buffer_master`
+- `driver_tier`
+- `buffer_tier`
+- `retained_tier`
+- `driver_pin`
+- `moved_sinks`
+- `retained_sinks`
+
+The manifest is the contract for later analysis stages. After `split_net`, later stages are allowed to insert same-tier local buffers around the split point, but the reports continue to check whether the moved and retained sink partitions stayed meaningful.
+
+### Buffer placement and cell choice
+
+Current split selection is fanout-driven and opposite-tier by default:
+
+- a split candidate is defined by `mixed_fanout`, not by raw structural cross-tier presence
+- the mixed-fanout classifier ignores driver tier and ignores `__PIN3DSPLITBUF__` pins
+- if the driver is on `upper`, the pass first tries to move `bottom` instance sinks behind a `bottom` buffer
+- if the driver is on `bottom`, the pass first tries to move `upper` instance sinks behind an `upper` buffer
+- if the preferred opposite-tier split is illegal, the pass skips deterministically instead of forcing a weak fallback
+
+Buffer master choice:
+
+- ordinary tier-local `BUF*`
+- exactly one signal input and one signal output
+- excludes non-buffer / unusable masters
+- sized by moved sink count using `PIN3D_SPLIT_FANOUT_PER_DRIVE`
+- picks the smallest legal drive that satisfies the estimated moved-branch load
+
+### Immediate verification
+
+Each inserted split is validated immediately inside the split stage:
+
+- buffer input must remain on the original net
+- buffer output must drive the branch net
+- moved sinks must end up on the branch net
+- retained sinks must stay off the branch net
+- driver must stay on the original net
+- original net must be `mixed_fanout`-pure after the split
+- branch net must be `mixed_fanout`-pure after the split
+
+If that local verification fails, the split action is rolled back and reported as a failed split.
+
+### Reports
+
+The split stage currently emits:
 
 - `split_net.summary.rpt`
 - `split_net.actions.rpt`
 - `split_net.before.nets`
 - `split_net.after.nets`
+- `split_net.cross_tier.summary.rpt`
+- `split_net.mixed_fanout.summary.rpt`
+- `split_net.split.before.rpt`
+- `split_net.split.after.rpt`
+- `split_net.split.summary.rpt`
+- `split_net.cross_tier.delta.rpt`
 
-Current v1 scope:
+### Current scope and boundaries
 
-- splitter insertion is reused from the existing OpenROAD helper
-- top-level term driven nets are still skipped and reported as `top_level_term_net_not_supported`
+- top-level term driven nets are still skipped and reported as `top_level_term_driver_not_supported`
+- top-level sink rewire is still out of scope and reported as `top_level_sink_rewire_not_supported`
+- clock nets are skipped by the split pass
 - reporting terminology is normalized to `upper` / `bottom`
+
+## Split Diagnostics
+
+The current OpenROAD 3D flow does not auto-repair split topology after every active stage. Instead it keeps explicit stage-side diagnostics so later optimization can be judged against the split intent.
+
+Stage reports used for this debug loop are:
+
+- `<stage>.split.summary.rpt`
+- `<stage>.cross_tier.delta.rpt`
+- `<stage>.cross_tier.summary.rpt`
+- `<stage>.mixed_fanout.summary.rpt`
+- `<stage>.clock.cross_tier.summary.rpt` for CTS stages
+
+The attribution report distinguishes:
+
+- added clock-related cross-tier nets
+- added data-related cross-tier nets
+- split-related vs non-split-related additions
+
+This is the current mechanism used to answer whether a stage:
+
+- deleted split buffers
+- recreated uncontrolled mixed data nets
+- or only added expected CTS clock-tree branches
 
 ## Stage-by-Stage Target Map
 
@@ -238,8 +381,8 @@ Current v1 scope:
 |---|---|---|---|
 | `ord-pre` | `generate_3d_views.py` | view rewrite from partition + map | Create 3D DEF/netlist view from 2D preplace result |
 | `ord-3d-floorplan` | `floorplan_3d.tcl` | `initialize_floorplan`, `make_tracks` | Build the initial 3D floorplan from the split netlist view |
-| `ord-3d-io` | `io_place_3d.tcl` -> `io_place.tcl` | `set_io_pin_constraint`, `place_pins` | Deterministic perimeter IO placement |
-| `ord-3d-split-net` | `split_net_stage.tcl` | `extract_cross_tier_nets`, `::tier_split_or2::run` | Reduce upper/bottom mixed-tier nets before macro placement |
+| `ord-3d-io` | `io_place_3d.tcl` -> `io_place.tcl` -> `io_place_helpers.tcl` | `set_io_pin_constraint`, `place_pins` | Deterministic perimeter IO placement |
+| `ord-3d-split-net` | `split_net_stage.tcl` -> `split_net.tcl` -> `split_net_impl.tcl` | `extract_cross_tier_nets`, `extract_mixed_fanout_nets`, `::tier_split_or2::run` | Reduce upper/bottom mixed fanout before macro placement |
 | `ord-place-macro-upper` | `place_macro_upper.tcl` | `apply_tier_policy upper`, macro placement helper | Place upper macros while bottom tier is cover |
 | `ord-place-macro-bottom` | `place_macro_bottom.tcl` | `apply_tier_policy bottom`, macro placement helper | Place bottom macros while upper tier is cover |
 | `ord-3d-pdn-only-bottom` | `pdn_only_bottom.tcl` | handoff preservation + tier policy | Publish a bottom-side PDN checkpoint handoff |
@@ -252,57 +395,109 @@ Current v1 scope:
 | `ord-gp2lg` | `handoff_copy_gp2lg.tcl` | handoff copy only | Freeze the staged tmp handoff into the legalize handoff |
 | `ord-legalize-upper` | `opt_lg_upper.tcl` | `detailed_placement`, `opt_design` helper | Upper-side legalization and preCTS clean-up |
 | `ord-legalize-bottom` | `opt_lg_bottom.tcl` | `detailed_placement`, `opt_design` helper | Bottom-side legalization and preCTS clean-up |
-| `ord-cts` | `cts.tcl` | `repair_clock_inverters`, `clock_tree_synthesis`, `repair_clock_nets`, `repair_timing_helper` | Build clocks on the owner tier and repair timing |
-| `ord-cts-post` | `cts_post.tcl` | `repair_clock_nets`, `repair_timing_helper` | Opposite-tier post-CTS timing repair |
+| `ord-cts` | `cts.tcl` -> `cts_stage_common.tcl` | optional `repair_clock_inverters`, `clock_tree_synthesis`, optional owner `repair_clock_nets`, optional owner repair | Build clocks on the owner tier while the receive tier is fixed |
+| `ord-cts-post` | `cts_post.tcl` -> `cts_stage_common.tcl` | `repair_clock_nets`, `repair_timing_helper` | Receive-tier post-CTS optimization while the owner tier is fixed |
 | `ord-route` | `global_route.tcl`, `detail_route.tcl` | `global_route`, `detailed_route`, `repair_timing_helper` | Route the design and preserve `5_route.sdc` |
 | `ord-final` | `final_report.tcl` | `global_connect`, `deleteRoutingObstructions`, `report_metrics`, `report_wire_length` | Publish `6_final.*` and final summary |
 
 ## Optimization Strategy
 
-The OpenROAD co-optimization strategy currently has four main layers.
+The current OpenROAD co-optimization strategy has five practical layers.
 
 ### 1. Structural co-optimization through staged handoff
 
-The flow no longer jumps directly from `ord-pre` into a monolithic placement/routing path. Instead it carries explicit 3D handoffs through:
+The flow no longer jumps directly from `ord-pre` into a monolithic place/route path. Instead it carries explicit 3D handoffs through:
 
 - 3D floorplan
 - deterministic IO
 - split-net
 - macro placement
-- PDN
+- split PDN
 - staged preCTS placement
 - CTS and post-CTS repair
 - route and final report
 
-This makes each stage restartable and debuggable.
+This makes each stage restartable, debuggable, and measurable with stage-local cross-tier reports.
 
-### 2. Tier-aware optimization masking
+### 2. Split first, then reduce mixed fanout
 
-The flow now mirrors Cadence-style allow-net control:
+`ord-3d-split-net` runs before macro placement and before the staged placement loop. The purpose is not to freeze all mixed nets; it is to convert uncontrolled mixed fanout into tier-pure fanout partitions as early as possible.
 
-- active side is optimized
-- opposite side remains protected
-- `mixed` nets stay optimizable in upper-only or bottom-only mode
-- unknown nets stay locked even in `all`
+The current flow therefore uses this sequence:
 
-This keeps optimization pressure focused while preserving cross-tier structure.
+- insert split buffers
+- record the split in the manifest
+- verify that original and branch nets are `mixed_fanout`-pure
+- let later stages optimize normally
+- report whether later stages recreate mixed fanout
 
-### 3. PreCTS split reduction
+This preserves co-optimization capability while still making the fanout rebound visible.
 
-`ord-3d-split-net` runs before macro placement and before the staged placement loop. The intent is to reduce expensive upper/bottom mixed nets early, so later:
+### 3. Tier-aware masking with clock-tree exemption
 
-- global placement sees fewer unavoidable cross-tier interactions
-- tier-local optimization has a cleaner signal graph
-- the comparison against `PIN3D_SPLIT_NET_FLOW=off` is explicit and measurable
+The owner-tier masks still come from `apply_tier_policy`, but the important current rule is:
 
-### 4. CTS and post-CTS repair
+- do not globally disable `mixed` nets
+- always exempt the clock-tree footprint during `ord-cts` and `ord-cts-post`
 
-OpenROAD now uses a two-step clock/timing strategy:
+This keeps DRV and timing repair viable while avoiding the earlier CTS crash in which derived clock nets were left locked.
 
-- `ord-cts` builds the clock tree on the owner tier
-- `ord-cts-post` repairs timing from the opposite-tier perspective
+### 4. Staged CTS instead of flat CTS
 
-This mirrors the “owner then receive/fix” idea from the Cadence flow without yet splitting the public API into three separate OpenROAD CTS targets.
+The current OpenROAD flow now mirrors the Cadence CTS architecture more closely:
+
+- `ord-cts` is the owner-tree stage
+- `ord-cts-post` is the receive-opt stage
+- the non-active tier is fixed with placement status `FIRM`
+- clock nets remain exempt from tier locking
+
+Current defaults:
+
+- `ord-place-upper` / `ord-place-bottom`: timing-driven placement remains on
+- `ord-legalize-upper` / `ord-legalize-bottom`: `OPENROAD_OPT_LG_ENABLE_REPAIR_DESIGN=0` by default
+- `ord-cts`: `OPENROAD_CTS_OWNER_REPAIR_TIMING=0` by default, so owner-tree builds clocks without immediately doing full owner-side data `repair_timing`
+- `ord-cts`: `OPENROAD_CTS_REPAIR_CLOCK_INVERTERS=0` by default in the staged 3D flow; this can be re-enabled explicitly, but on `asap7_nangate45_3D/ibex` it reduced clock cross-tier growth from `+175` to `+111`
+- `ord-cts`: `OPENROAD_CTS_OWNER_REPAIR_CLOCK_NETS=0` by default, so owner-tree does not run an extra explicit `repair_clock_nets` after `clock_tree_synthesis`
+- `ord-cts`: `SKIP_PIN_SWAP=1`
+- `ord-cts-post`: `repair_clock_nets` runs, and post-CTS data `repair_timing` is enabled by default with `SKIP_CTS_POST_REPAIR_TIMING=0`
+
+This is deliberate. The flow is currently biased toward keeping owner-tree CTS contained and shifting most data recovery to the receive stage.
+
+### 5. Current debug focus: data cross-tier vs clock cross-tier
+
+The current reporting separates:
+
+- total cross-tier nets
+- clock-only cross-tier nets
+- data-related vs clock-related additions
+- split-related vs non-split-related additions
+
+This matters because the current behavior is different by stage:
+
+- `split_net` reduces `mixed_fanout` aggressively even when structural cross-tier remains
+- `place/legalize` are now measured against `mixed_fanout` rebound, not just raw structural crossings
+- the remaining large increase at CTS is currently dominated by new clock-tree branches, not by collapse of the split-managed data topology
+
+### Current observed behavior
+
+On the current canonical OpenROAD debug cases:
+
+- `asap7_nangate45_3D/ibex` split-only now completes in about `8s`, splits `223` candidate nets, and reduces structural cross-tier count from `547` to `324`
+- `nangate45_3D/ibex` no longer crashes in `repair_clock_inverters`; the clock-net skip now covers the full clock-tree footprint, and the remaining CTS cross-tier growth is mostly clock-related rather than data-split collapse
+
+### Performance notes
+
+The split stage was recently rewritten for runtime efficiency. Current acceleration points are:
+
+- cached master lookup
+- cached tier-local buffer candidate lists
+- cached unique-name allocation
+- prebuilt net / instance caches
+- memoized tier classification
+- lightweight immediate split verification
+- no full-database `CELL_TIER` / `PIN_TIER` dump by default
+
+These optimizations are now part of the intended OpenROAD split strategy, not a temporary debug workaround.
 
 ## Test and Experiment Scripts
 
@@ -329,6 +524,23 @@ The extractor writes CSV rows from:
 - `split_net.summary.rpt`
 - `final_summary.txt`
 
+## Current Verification Notes
+
+Current smoke validation of the split Tcl structure shows:
+
+- `ord-3d-split-net` still reaches the full split pass and writes:
+  - [split_net.summary.rpt](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/logs/asap7_3D/gcd/openroad_tclsplit_gcd_20260403_r1/split_net.summary.rpt)
+  - [split_net.actions.rpt](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/logs/asap7_3D/gcd/openroad_tclsplit_gcd_20260403_r1/split_net.actions.rpt)
+  - [pin3d_split_manifest.list](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/results/asap7_3D/gcd/openroad_tclsplit_gcd_20260403_r1/pin3d_split_manifest.list)
+- `io_place.tcl` still produces legal deterministic placement output:
+  - [2_2_floorplan_io.log](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/logs/asap7/gcd/openroad_tclsplit_gcd_20260403_r2/2_2_floorplan_io.log)
+  - [io_pin_placement.txt](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/logs/asap7/gcd/openroad_tclsplit_gcd_20260403_r2/io_pin_placement.txt)
+- `tier_partition.tcl` still enters the TritonPart UB sweep and writes the sweep plan:
+  - [2_tritonpart.log.tmp](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/logs/asap7/gcd/openroad_tclsplit_gcd_20260403_r2/2_tritonpart.log.tmp)
+  - [partition.simple_plan.txt](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/results/asap7/gcd/openroad_tclsplit_gcd_20260403_r2/partition.simple_plan.txt)
+
+These checks were intentionally stopped once the relevant source chains had been exercised. They were not intended as final QoR experiments.
+
 ## Current Boundaries
 
 This first rebuilt OpenROAD flow intentionally does not yet do everything the Cadence flow does.
@@ -338,6 +550,8 @@ Current boundaries:
 - CTS and route remain public `ord-cts`, `ord-cts-post`, `ord-route` targets
 - HB-via metrics are not added to the OpenROAD CSV yet
 - top-level term-driven split-net support is still out of scope in v1
+- top-level sink rewire is still out of scope in v1
+- post-CTS data `repair_timing` is enabled by default with `SKIP_CTS_POST_REPAIR_TIMING=0`
 - the new IO logic mirrors the Cadence structure, but remains constrained by OpenROAD `set_io_pin_constraint` / `place_pins`
 
 That said, the major flow architecture is now parallel to the commercial Cadence flow:

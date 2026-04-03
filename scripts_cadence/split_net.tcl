@@ -40,7 +40,7 @@ namespace eval ::mixed_tier_split {
   variable SKIP_REASONS
   array set SKIP_REASONS {}
 
-  variable PROCESSED_NETS {}
+  variable PROCESSED_SPLITS {}
 }
 
 proc ::mixed_tier_split::box_flat4 {box} {
@@ -182,11 +182,39 @@ proc ::mixed_tier_split::collect_sinks_by_tier {net_ptr} {
     unknown $unknown_sinks]
 }
 
-proc ::mixed_tier_split::choose_buffer_tier {upper_count bottom_count} {
-  if {$upper_count >= $bottom_count} {
-    return "upper"
+proc ::mixed_tier_split::opposite_tier {tier} {
+  switch -- $tier {
+    upper {
+      return "bottom"
+    }
+    bottom {
+      return "upper"
+    }
+    default {
+      return ""
+    }
   }
-  return "bottom"
+}
+
+proc ::mixed_tier_split::choose_buffer_tier {driver_tier upper_count bottom_count} {
+  set opposite_tier [::mixed_tier_split::opposite_tier $driver_tier]
+  switch -- $opposite_tier {
+    upper {
+      if {$upper_count > 0} {
+        return [list upper "opposite_to_driver"]
+      }
+      return [list "" "no_supported_upper_instance_sinks"]
+    }
+    bottom {
+      if {$bottom_count > 0} {
+        return [list bottom "opposite_to_driver"]
+      }
+      return [list "" "no_supported_bottom_instance_sinks"]
+    }
+    default {
+      return [list "" "driver_tier_unknown"]
+    }
+  }
 }
 
 proc ::mixed_tier_split::master_io_summary {master_name} {
@@ -272,6 +300,47 @@ proc ::mixed_tier_split::inst_term_names {inst_terms} {
   return $names
 }
 
+proc ::mixed_tier_split::is_processed_net_fanout_pure {net_ptr} {
+  set sinks_by_tier [::mixed_tier_split::collect_sinks_by_tier $net_ptr]
+  set upper_total [expr {[llength [dict get $sinks_by_tier upper_inst]] + [llength [dict get $sinks_by_tier upper_term]]}]
+  set bottom_total [expr {[llength [dict get $sinks_by_tier bottom_inst]] + [llength [dict get $sinks_by_tier bottom_term]]}]
+  return [expr {!($upper_total > 0 && $bottom_total > 0)}]
+}
+
+proc ::mixed_tier_split::verify_split_result {original_net_name branch_net_name} {
+  set original_net_ptr [dbGet -e [dbGet -p top.nets.name $original_net_name]]
+  if {$original_net_ptr eq "" || $original_net_ptr eq "0x0"} {
+    return [list 0 "original_net_missing"]
+  }
+  set branch_net_ptr [dbGet -e [dbGet -p top.nets.name $branch_net_name]]
+  if {$branch_net_ptr eq "" || $branch_net_ptr eq "0x0"} {
+    return [list 0 "branch_net_missing"]
+  }
+  if {![::mixed_tier_split::is_processed_net_fanout_pure $original_net_ptr]} {
+    return [list 0 "original_net_still_mixed_fanout"]
+  }
+  if {![::mixed_tier_split::is_processed_net_fanout_pure $branch_net_ptr]} {
+    return [list 0 "branch_net_still_mixed_fanout"]
+  }
+  return [list 1 ""]
+}
+
+proc ::mixed_tier_split::rollback_split {inst_name branch_net action_fh} {
+  set rollback_ok 1
+  if {[catch {deleteInst $inst_name} rollback_err]} {
+    set rollback_ok 0
+    puts $action_fh "  ROLLBACK_FAIL inst=$inst_name error=$rollback_err"
+  } else {
+    puts $action_fh "  ROLLBACK_DELETE_INST $inst_name"
+  }
+  if {$rollback_ok && [catch {deleteNet $branch_net} rollback_err]} {
+    puts $action_fh "  ROLLBACK_WARN net=$branch_net error=$rollback_err"
+  } elseif {$rollback_ok} {
+    puts $action_fh "  ROLLBACK_DELETE_NET $branch_net"
+  }
+  return $rollback_ok
+}
+
 proc ::mixed_tier_split::split_net_with_buffer {net_ptr driver_obj sinks_by_tier action_fh} {
   variable CFG
 
@@ -283,7 +352,11 @@ proc ::mixed_tier_split::split_net_with_buffer {net_ptr driver_obj sinks_by_tier
 
   set upper_count [llength $upper_inst_sinks]
   set bottom_count [llength $bottom_inst_sinks]
-  set buffer_tier [::mixed_tier_split::choose_buffer_tier $upper_count $bottom_count]
+  set driver_tier [tier_classify_object_ptr $driver_obj]
+  lassign [::mixed_tier_split::choose_buffer_tier $driver_tier $upper_count $bottom_count] buffer_tier tier_reason
+  if {$buffer_tier eq ""} {
+    return [list 0 $tier_reason]
+  }
 
   set moved_inst_sinks {}
   set moved_term_sinks {}
@@ -316,7 +389,7 @@ proc ::mixed_tier_split::split_net_with_buffer {net_ptr driver_obj sinks_by_tier
   set inst_name [::mixed_tier_split::ensure_unique_name [format "%s_%s_%s" $CFG(inst_prefix) $buffer_tier $safe_net_name] $existing_names]
   set branch_net [::mixed_tier_split::ensure_unique_name [format "%s_%s_%s" $CFG(net_prefix) $buffer_tier $safe_net_name] $existing_names]
 
-  puts $action_fh "ACTION net=$net_name driver=[::mixed_tier_split::object_label $driver_obj] buffer_master=$buffer_master buffer_tier=$buffer_tier retained_tier=$retained_tier new_inst=$inst_name new_net=$branch_net"
+  puts $action_fh "ACTION net=$net_name driver=[::mixed_tier_split::object_label $driver_obj] driver_tier=$driver_tier buffer_master=$buffer_master buffer_tier=$buffer_tier retained_tier=$retained_tier tier_reason=$tier_reason new_inst=$inst_name new_net=$branch_net"
 
   if {$CFG(dry_run)} {
     foreach inst_term $moved_inst_sinks {
@@ -342,21 +415,24 @@ proc ::mixed_tier_split::split_net_with_buffer {net_ptr driver_obj sinks_by_tier
     puts $action_fh "  MOVE SINK $moved_pin -> $branch_net"
   }
 
-  return [list 1 ""]
-}
+  if {$CFG(verify_processed)} {
+    lassign [::mixed_tier_split::verify_split_result $net_name $branch_net] verify_ok verify_reason
+    if {!$verify_ok} {
+      puts $action_fh "  VERIFY_FAIL net=$net_name branch=$branch_net reason=$verify_reason"
+      ::mixed_tier_split::rollback_split $inst_name $branch_net $action_fh
+      return [list 0 $verify_reason]
+    }
+    puts $action_fh "  VERIFY_OK net=$net_name branch=$branch_net"
+  }
 
-proc ::mixed_tier_split::is_processed_net_tier_pure {net_ptr} {
-  set sinks_by_tier [::mixed_tier_split::collect_sinks_by_tier $net_ptr]
-  set upper_total [expr {[llength [dict get $sinks_by_tier upper_inst]] + [llength [dict get $sinks_by_tier upper_term]]}]
-  set bottom_total [expr {[llength [dict get $sinks_by_tier bottom_inst]] + [llength [dict get $sinks_by_tier bottom_term]]}]
-  return [expr {!($upper_total > 0 && $bottom_total > 0)}]
+  return [list 1 $branch_net]
 }
 
 proc ::mixed_tier_split::run {} {
   variable CFG
   variable COUNTERS
   variable SKIP_REASONS
-  variable PROCESSED_NETS
+  variable PROCESSED_SPLITS
 
   array set COUNTERS {
     candidate_nets       0
@@ -369,7 +445,7 @@ proc ::mixed_tier_split::run {} {
   }
   array unset SKIP_REASONS
   array set SKIP_REASONS {}
-  set PROCESSED_NETS {}
+  set PROCESSED_SPLITS {}
 
   foreach term [dbGet -e top.terms] {
     switch -- [tier_classify_term_ptr $term] {
@@ -448,15 +524,15 @@ proc ::mixed_tier_split::run {} {
 
     incr COUNTERS(mixed_nets)
 
-    lassign [::mixed_tier_split::split_net_with_buffer $net_ptr $driver_obj $sinks_by_tier $action_fh] ok split_reason
+    lassign [::mixed_tier_split::split_net_with_buffer $net_ptr $driver_obj $sinks_by_tier $action_fh] ok split_result
     if {!$ok} {
-      ::mixed_tier_split::record_skip $split_reason
-      puts $action_fh "SKIP $net_name reason=$split_reason"
+      ::mixed_tier_split::record_skip $split_result
+      puts $action_fh "SKIP $net_name reason=$split_result"
       continue
     }
 
     incr COUNTERS(split_nets)
-    lappend PROCESSED_NETS $net_name
+    lappend PROCESSED_SPLITS [list $net_name $split_result]
   }
 
   if {!$CFG(dry_run) && $CFG(run_eco_place)} {
@@ -464,14 +540,16 @@ proc ::mixed_tier_split::run {} {
   }
 
   if {$CFG(verify_processed)} {
-    foreach net_name $PROCESSED_NETS {
+    foreach split_record $PROCESSED_SPLITS {
+      lassign $split_record net_name branch_net_name
       set net_ptr [dbGet -e [dbGet -p top.nets.name $net_name]]
-      if {$net_ptr eq ""} {
+      if {$net_ptr eq "" || $net_ptr eq "0x0"} {
         continue
       }
-      if {![::mixed_tier_split::is_processed_net_tier_pure $net_ptr]} {
+      lassign [::mixed_tier_split::verify_split_result $net_name $branch_net_name] verify_ok verify_reason
+      if {!$verify_ok} {
         incr COUNTERS(processed_residual)
-        puts $action_fh "VERIFY_FAIL $net_name reason=processed_net_still_mixed"
+        puts $action_fh "VERIFY_FAIL $net_name branch=$branch_net_name reason=$verify_reason"
       }
     }
   }
@@ -482,6 +560,7 @@ proc ::mixed_tier_split::run {} {
   puts $summary_fh "mode enabled"
   puts $summary_fh "candidate_nets $COUNTERS(candidate_nets)"
   puts $summary_fh "mixed_tier_nets $COUNTERS(mixed_nets)"
+  puts $summary_fh "mixed_fanout_nets $COUNTERS(mixed_nets)"
   puts $summary_fh "split_nets $COUNTERS(split_nets)"
   puts $summary_fh "skipped_nets $COUNTERS(skipped_nets)"
   puts $summary_fh "processed_residual $COUNTERS(processed_residual)"

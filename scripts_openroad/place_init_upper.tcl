@@ -40,6 +40,7 @@ log_cmd global_placement -density $place_density \
         -pad_left $::env(CELL_PAD_IN_SITES_GLOBAL_PLACEMENT) \
         -pad_right $::env(CELL_PAD_IN_SITES_GLOBAL_PLACEMENT) \
         {*}$global_placement_args
+pin3d_metrics_invalidate_cache
 report_cross_tier_transition $summary_report $before_report $after_report -label "place_init_upper"
 
 # mark_insts_by_master "*bottom*" PLACED

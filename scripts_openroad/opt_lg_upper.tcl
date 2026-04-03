@@ -28,14 +28,27 @@ source $::env(OPENROAD_SCRIPTS_DIR)/placement_utils.tcl
 set before_report [file join $LOG_DIR "legalize_upper.before.nets"]
 set after_report [file join $LOG_DIR "legalize_upper.after.nets"]
 set summary_report [file join $LOG_DIR "legalize_upper.cross_tier.summary.rpt"]
+set mixed_before_report [file join $LOG_DIR "legalize_upper.mixed_fanout.before.nets"]
+set mixed_after_report [file join $LOG_DIR "legalize_upper.mixed_fanout.after.nets"]
+set mixed_summary_report [file join $LOG_DIR "legalize_upper.mixed_fanout.summary.rpt"]
+set split_before_report [file join $LOG_DIR "legalize_upper.split.before.rpt"]
+set split_after_report [file join $LOG_DIR "legalize_upper.split.after.rpt"]
+set split_summary_report [file join $LOG_DIR "legalize_upper.split.summary.rpt"]
+set attribution_report [file join $LOG_DIR "legalize_upper.cross_tier.delta.rpt"]
 
 # mark_insts_by_master "*bottom*" FIRM
 
-apply_tier_policy upper -fixlib 1 -allow_net upper-only -protect_split_buffers 0
+apply_tier_policy upper -fixlib 1 -allow_net upper-only
 report_cross_tier_snapshot $before_report -label "legalize_upper before"
+report_mixed_fanout_snapshot $mixed_before_report -label "legalize_upper before"
+report_split_structure_snapshot $split_before_report -label "legalize_upper before"
 
 source $::env(OPENROAD_SCRIPTS_DIR)/opt_lg_design.tcl
+pin3d_metrics_invalidate_cache
 report_cross_tier_transition $summary_report $before_report $after_report -label "legalize_upper"
+report_mixed_fanout_transition $mixed_summary_report $mixed_before_report $mixed_after_report -label "legalize_upper"
+report_split_structure_transition $split_summary_report $split_before_report $split_after_report -label "legalize_upper"
+report_cross_tier_delta_attribution $attribution_report $before_report $after_report -label "legalize_upper"
 
 # mark_insts_by_master "*bottom*" PLACED
 

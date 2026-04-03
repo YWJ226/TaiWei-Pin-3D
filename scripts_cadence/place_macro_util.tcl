@@ -13,6 +13,26 @@ if {![namespace exists pmu]} {
   namespace eval pmu {}
 }
 
+proc pmu::is_macro_like_inst {inst_ptr} {
+  if {$inst_ptr eq "" || $inst_ptr eq "0x0"} {
+    return 0
+  }
+
+  set sub_class [string tolower [dbGet $inst_ptr.cell.subClass]]
+  set base_class [string tolower [dbGet $inst_ptr.cell.baseClass]]
+  if {[string match "*block*" $sub_class] || [string match "*block*" $base_class]} {
+    return 1
+  }
+  if {[string match "*ring*" $sub_class] || [string match "*ring*" $base_class]} {
+    return 1
+  }
+  set site_name [dbGet $inst_ptr.cell.site.name]
+  if {$site_name eq "" || $site_name eq "0x0"} {
+    return 1
+  }
+  return 0
+}
+
 proc pmu::_get_halos {} {
   if {![info exists ::env(MACRO_PLACE_HALO)] || $::env(MACRO_PLACE_HALO) eq ""} {
     return [list 0 0]
@@ -35,7 +55,7 @@ proc pmu::get_tier_macro_cells {tier} {
   set cells {}
 
   foreach inst [dbGet -p2 top.insts.cell.name $pat] {
-    if {[dbGet $inst.cell.site.name] eq "0x0"} {
+    if {[pmu::is_macro_like_inst $inst]} {
       lappend cells [dbGet $inst.cell.name]
     }
   }
@@ -47,8 +67,8 @@ proc pmu::get_tier_macro_insts {tier} {
   set t [pmu::_norm_tier $tier]
   set pat "*_${t}"
   set insts {}
-  foreach inst [dbGet -p2 top.insts.cell.subClass block] {
-    if {[string match $pat [dbGet $inst.cell.name]]} {
+  foreach inst [dbGet -p2 top.insts.cell.name $pat] {
+    if {[pmu::is_macro_like_inst $inst]} {
       lappend insts $inst
     }
   }
@@ -63,6 +83,11 @@ proc pmu::set_tier_macro_status {tier status} {
   }
   dbSet $insts.pStatus $status
   puts "INFO(PMU): Set [llength $insts] ${tier} macros to '$status'."
+}
+
+proc pmu::set_all_tier_macros_fixed {} {
+  pmu::set_tier_macro_status upper fixed
+  pmu::set_tier_macro_status bottom fixed
 }
 
 proc pmu::run_tier_macro_place {tier halo_x halo_y} {

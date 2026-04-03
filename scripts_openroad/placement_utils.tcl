@@ -242,7 +242,7 @@ proc _set_dont_use {cells} {
   if {![llength $cells]} { return }
   foreach c $cells { 
     set_dont_use $c 
-    puts "set_dont_use $c"
+    # puts "set_dont_use $c"
   }
 }
 
@@ -475,7 +475,7 @@ proc _report_allow_net_resolution {stage_label requested_class effective_class} 
 
 proc _or_is_split_buffer_name {name} {
   set trimmed [string trim $name]
-  if {[string match "*__PIN3DSPLITBUF__*" $trimmed]} {
+  if {[string match "*__SPLITBUF__*" $trimmed]} {
     return 1
   }
   # Backward compatibility for older result variants.
@@ -485,7 +485,7 @@ proc _or_is_split_buffer_name {name} {
 proc _pin3d_split_buffer_cells {} {
   array set seen {}
   set cells {}
-  foreach pattern [list "*__PIN3DSPLITBUF__*" "*__SPLITBUF*"] {
+  foreach pattern [list "*__SPLITBUF__*" "*__SPLITBUF*"] {
     foreach cell_obj [get_cells -hierarchical -quiet $pattern] {
       if {[info exists seen($cell_obj)]} {
         continue
@@ -495,6 +495,1108 @@ proc _pin3d_split_buffer_cells {} {
     }
   }
   return $cells
+}
+
+proc _split_branch_name_match {name} {
+  return [string match "*__BRANCH*" [string trim $name]]
+}
+
+proc pin3d_split_manifest_path {{results_dir ""}} {
+  if {$results_dir eq ""} {
+    set results_dir [_get RESULTS_DIR]
+  }
+  return [file join $results_dir "pin3d_split_manifest.list"]
+}
+
+proc pin3d_write_split_manifest {records {manifest_path ""}} {
+  if {$manifest_path eq ""} {
+    set manifest_path [pin3d_split_manifest_path]
+  }
+  set fh [open $manifest_path w]
+  puts $fh "# PIN3D split manifest"
+  puts $fh "# format: Tcl list per line => record <dict>"
+  foreach record $records {
+    puts $fh [list record $record]
+  }
+  close $fh
+  return $manifest_path
+}
+
+proc pin3d_read_split_manifest {{manifest_path ""}} {
+  if {$manifest_path eq ""} {
+    set manifest_path [pin3d_split_manifest_path]
+  }
+  if {![file exists $manifest_path]} {
+    return {}
+  }
+
+  set records {}
+  set fh [open $manifest_path r]
+  while {[gets $fh line] >= 0} {
+    set trimmed [string trim $line]
+    if {$trimmed eq "" || [string match "#*" $trimmed]} {
+      continue
+    }
+    if {[catch {lassign $trimmed tag payload}]} {
+      continue
+    }
+    if {$tag ne "record" || $payload eq ""} {
+      continue
+    }
+    lappend records $payload
+  }
+  close $fh
+  return $records
+}
+
+proc _pin3d_record_list_field {record key} {
+  if {![dict exists $record $key]} {
+    return {}
+  }
+  return [dict get $record $key]
+}
+
+proc _pin3d_is_split_pin_ref {name} {
+  return [expr {[_or_is_split_buffer_name $name] && [string first "/" $name] >= 0}]
+}
+
+proc _pin3d_record_has_placeholder_split_refs {record} {
+  foreach key {moved_sinks retained_sinks} {
+    foreach sink_name [_pin3d_record_list_field $record $key] {
+      if {[_pin3d_is_split_pin_ref $sink_name]} {
+        return 1
+      }
+    }
+  }
+  return 0
+}
+
+proc _pin3d_rebuild_name_caches {} {
+  unset -nocomplain ::_PIN3D_INST_CACHE ::_PIN3D_NET_CACHE ::_PIN3D_ITERM_CACHE
+
+  array set ::_PIN3D_INST_CACHE {}
+  array set ::_PIN3D_NET_CACHE {}
+  array set ::_PIN3D_ITERM_CACHE {}
+
+  set block [ord::get_db_block]
+  foreach inst [$block getInsts] {
+    set inst_name [$inst getName]
+    set ::_PIN3D_INST_CACHE($inst_name) $inst
+    foreach iterm [$inst getITerms] {
+      set full_name "[[$iterm getInst] getName]/[[$iterm getMTerm] getName]"
+      set ::_PIN3D_ITERM_CACHE($full_name) $iterm
+    }
+  }
+  foreach net [$block getNets] {
+    set ::_PIN3D_NET_CACHE([$net getName]) $net
+  }
+}
+
+proc _pin3d_find_inst_by_name {inst_name} {
+  if {[info exists ::_PIN3D_INST_CACHE($inst_name)]} {
+    return $::_PIN3D_INST_CACHE($inst_name)
+  }
+  set block [ord::get_db_block]
+  foreach inst [$block getInsts] {
+    if {[$inst getName] eq $inst_name} {
+      set ::_PIN3D_INST_CACHE($inst_name) $inst
+      return $inst
+    }
+  }
+  return ""
+}
+
+proc _pin3d_find_net_by_name {net_name} {
+  if {[info exists ::_PIN3D_NET_CACHE($net_name)]} {
+    return $::_PIN3D_NET_CACHE($net_name)
+  }
+  set block [ord::get_db_block]
+  foreach net [$block getNets] {
+    if {[$net getName] eq $net_name} {
+      set ::_PIN3D_NET_CACHE($net_name) $net
+      return $net
+    }
+  }
+  return ""
+}
+
+proc _pin3d_iterm_full_name {iterm} {
+  return "[[$iterm getInst] getName]/[[$iterm getMTerm] getName]"
+}
+
+proc _pin3d_find_iterm_by_name {full_name} {
+  if {[info exists ::_PIN3D_ITERM_CACHE($full_name)]} {
+    return $::_PIN3D_ITERM_CACHE($full_name)
+  }
+  set slash_idx [string last "/" $full_name]
+  if {$slash_idx < 0} {
+    return ""
+  }
+  set inst_name [string range $full_name 0 [expr {$slash_idx - 1}]]
+  set pin_name [string range $full_name [expr {$slash_idx + 1}] end]
+  set inst [_pin3d_find_inst_by_name $inst_name]
+  if {$inst eq ""} {
+    return ""
+  }
+  set iterm [$inst findITerm $pin_name]
+  if {$iterm ne "" && $iterm ne "NULL"} {
+    set ::_PIN3D_ITERM_CACHE($full_name) $iterm
+  }
+  return $iterm
+}
+
+proc _pin3d_iterm_net {iterm} {
+  if {$iterm eq "" || $iterm eq "NULL"} {
+    return ""
+  }
+  if {[catch {set net [$iterm getNet]}]} {
+    return ""
+  }
+  if {$net eq "" || $net eq "NULL"} {
+    return ""
+  }
+  return $net
+}
+
+proc _pin3d_iterm_net_name {iterm} {
+  set net [_pin3d_iterm_net $iterm]
+  if {$net eq ""} {
+    return ""
+  }
+  return [$net getName]
+}
+
+proc _pin3d_safe_sigtype_from_mterm {mterm} {
+  if {[catch {set sig_type [$mterm getSigType]}]} {
+    return "SIGNAL"
+  }
+  return $sig_type
+}
+
+proc _pin3d_safe_iotype_from_mterm {mterm} {
+  if {[catch {set io_type [$mterm getIoType]}]} {
+    return ""
+  }
+  return $io_type
+}
+
+proc _pin3d_buffer_master_usable {master_name} {
+  if {![regexp -nocase -- {^buf} $master_name]} {
+    return 0
+  }
+  if {[regexp -nocase -- {^(clkbuf|tbuf)} $master_name]} {
+    return 0
+  }
+  return 1
+}
+
+proc _pin3d_master_signal_io_summary {master} {
+  set input_name ""
+  set output_name ""
+  set input_count 0
+  set output_count 0
+  foreach mterm [$master getMTerms] {
+    set sig_type [_pin3d_safe_sigtype_from_mterm $mterm]
+    if {$sig_type eq "POWER" || $sig_type eq "GROUND"} {
+      continue
+    }
+    switch -- [_pin3d_safe_iotype_from_mterm $mterm] {
+      INPUT {
+        incr input_count
+        set input_name [$mterm getName]
+      }
+      OUTPUT {
+        incr output_count
+        set output_name [$mterm getName]
+      }
+      INOUT {
+        return [list -1 -1 "" ""]
+      }
+    }
+  }
+  return [list $input_count $output_count $input_name $output_name]
+}
+
+proc _pin3d_buffer_inst_io {inst {allow_split_tag 0}} {
+  if {$inst eq "" || $inst eq "NULL"} {
+    return ""
+  }
+  set inst_name [$inst getName]
+  set master [$inst getMaster]
+  set master_name [$master getName]
+  set is_split_tagged [_or_is_split_buffer_name $inst_name]
+  if {!$allow_split_tag && $is_split_tagged} {
+    return ""
+  }
+  if {!$is_split_tagged && ![_pin3d_buffer_master_usable $master_name]} {
+    return ""
+  }
+  lassign [_pin3d_master_signal_io_summary $master] input_count output_count input_name output_name
+  if {$input_count != 1 || $output_count != 1 || $input_name eq "" || $output_name eq ""} {
+    return ""
+  }
+  set input_iterm [$inst findITerm $input_name]
+  set output_iterm [$inst findITerm $output_name]
+  if {$input_iterm eq "" || $output_iterm eq ""} {
+    return ""
+  }
+  return [dict create \
+    input $input_iterm \
+    output $output_iterm \
+    input_name $input_name \
+    output_name $output_name \
+    master_name $master_name \
+    inst_name $inst_name]
+}
+
+proc _pin3d_buffer_drive_score {master_name} {
+  set score 999999
+  if {[regexp -nocase -- {[_x]([0-9]+)(?:_|$)} $master_name -> drive]} {
+    set score $drive
+  }
+  return $score
+}
+
+proc _pin3d_next_power_of_two {value} {
+  if {$value <= 1} {
+    return 1
+  }
+  set power 1
+  while {$power < $value} {
+    set power [expr {$power * 2}]
+  }
+  return $power
+}
+
+proc _pin3d_required_buffer_drive_score {moved_sink_count} {
+  set per_drive_unit 24
+  if {[info exists ::env(PIN3D_SPLIT_FANOUT_PER_DRIVE)] && $::env(PIN3D_SPLIT_FANOUT_PER_DRIVE) ne ""} {
+    set per_drive_unit $::env(PIN3D_SPLIT_FANOUT_PER_DRIVE)
+  }
+  if {$per_drive_unit < 1} {
+    set per_drive_unit 24
+  }
+  set units [expr {int(ceil(double(max($moved_sink_count, 1)) / double($per_drive_unit)))}]
+  return [_pin3d_next_power_of_two $units]
+}
+
+proc _pin3d_choose_tier_buffer_master {tier {preferred_master ""} {moved_sink_count 1}} {
+  set candidates {}
+  set db [ord::get_db]
+  foreach lib [::odb::dbDatabase_getLibs $db] {
+    foreach master [::odb::dbLib_getMasters $lib] {
+      if {![master_has_site $master]} {
+        continue
+      }
+      set master_name [$master getName]
+      if {![_pin3d_buffer_master_usable $master_name]} {
+        continue
+      }
+      if {$tier eq "upper"} {
+        if {![string match "*_upper" $master_name]} {
+          continue
+        }
+      } else {
+        if {![string match "*_bottom" $master_name] && ![string match "*_lower" $master_name]} {
+          continue
+        }
+      }
+      lassign [_pin3d_master_signal_io_summary $master] input_count output_count input_name output_name
+      if {$input_count == 1 && $output_count == 1 && $input_name ne "" && $output_name ne ""} {
+        lappend candidates [list [_pin3d_buffer_drive_score $master_name] $master_name]
+      }
+    }
+  }
+  if {[llength $candidates] == 0} {
+    return ""
+  }
+  set sorted [lsort -integer -index 0 [lsort -dictionary -index 1 $candidates]]
+  set required_drive [_pin3d_required_buffer_drive_score $moved_sink_count]
+  if {$preferred_master ne ""} {
+    foreach item $sorted {
+      if {[lindex $item 1] eq $preferred_master} {
+        return $preferred_master
+      }
+    }
+  }
+  foreach item $sorted {
+    if {[lindex $item 0] >= $required_drive} {
+      return [lindex $item 1]
+    }
+  }
+  return [lindex [lindex $sorted end] 1]
+}
+
+proc _pin3d_same_tier_buffer_reachable {inst split_tier} {
+  if {$inst eq "" || $inst eq "NULL"} {
+    return ""
+  }
+  set inst_tier [_or_inst_tier $inst]
+  if {$inst_tier ne $split_tier} {
+    return ""
+  }
+  return [_pin3d_buffer_inst_io $inst 0]
+}
+
+proc _pin3d_collect_downstream_branch_domain {branch_net split_tier} {
+  array set seen_nets {}
+  array set seen_buffers {}
+  array set sink_lookup {}
+  set branch_nets {}
+  set cross_tier_branch_nets {}
+  set queue [list $branch_net]
+
+  while {[llength $queue] > 0} {
+    set net [lindex $queue 0]
+    set queue [lrange $queue 1 end]
+    if {$net eq "" || $net eq "NULL"} {
+      continue
+    }
+    set net_name [$net getName]
+    if {[info exists seen_nets($net_name)]} {
+      continue
+    }
+    set seen_nets($net_name) 1
+    lappend branch_nets $net_name
+
+    lassign [tier_net_structural_presence_detail_counts $net] upper_count bottom_count io_count unknown_count
+    set category [_cross_tier_category_from_presence \
+      [expr {$upper_count > 0}] \
+      [expr {$bottom_count > 0}] \
+      [expr {$io_count > 0}] \
+      [expr {$unknown_count > 0}]]
+    if {$category ne "" && $category ne "Unknown_Tier"} {
+      lappend cross_tier_branch_nets $net_name
+    }
+
+    foreach iterm [$net getITerms] {
+      set mterm [$iterm getMTerm]
+      set sig_type [_pin3d_safe_sigtype_from_mterm $mterm]
+      if {$sig_type eq "POWER" || $sig_type eq "GROUND"} {
+        continue
+      }
+      if {[_pin3d_safe_iotype_from_mterm $mterm] ne "INPUT"} {
+        continue
+      }
+
+      set inst [$iterm getInst]
+      set buffer_info [_pin3d_same_tier_buffer_reachable $inst $split_tier]
+      if {$buffer_info ne ""} {
+        set inst_name [$inst getName]
+        if {![info exists seen_buffers($inst_name)]} {
+          set seen_buffers($inst_name) 1
+        }
+        set out_net [_pin3d_iterm_net [dict get $buffer_info output]]
+        if {$out_net ne ""} {
+          lappend queue $out_net
+        }
+        continue
+      }
+      set sink_lookup([_pin3d_iterm_full_name $iterm]) 1
+    }
+  }
+
+  return [dict create \
+    sink_names [lsort [array names sink_lookup]] \
+    branch_nets [lsort -unique $branch_nets] \
+    branch_cross_tier_nets [lsort -unique $cross_tier_branch_nets] \
+    branch_buffers [lsort [array names seen_buffers]]]
+}
+
+proc _pin3d_validate_split_entry {record} {
+  set split_tier [dict get $record buffer_tier]
+  set split_inst_name [dict get $record split_inst]
+  set original_net_name [dict get $record original_net]
+  set original_net [_pin3d_find_net_by_name $original_net_name]
+  set split_inst [_pin3d_find_inst_by_name $split_inst_name]
+  set split_info ""
+  set literal_split_boundary 0
+  if {$split_inst ne ""} {
+    set split_info [_pin3d_buffer_inst_io $split_inst 1]
+    if {$split_info ne ""} {
+      set literal_split_boundary 1
+    }
+  }
+
+  set branch_net ""
+  if {$literal_split_boundary} {
+    set branch_net [_pin3d_iterm_net [dict get $split_info output]]
+  }
+  if {$branch_net eq "" && [dict exists $record branch_net]} {
+    set branch_net [_pin3d_find_net_by_name [dict get $record branch_net]]
+  }
+  if {$branch_net eq ""} {
+    if {$split_inst eq ""} {
+      return [dict create status violated reason split_buffer_missing]
+    }
+    if {$split_info eq ""} {
+      return [dict create status violated reason split_buffer_invalid]
+    }
+    return [dict create status violated reason split_branch_missing]
+  }
+
+  set branch_domain [_pin3d_collect_downstream_branch_domain $branch_net $split_tier]
+  set reachable_sinks [dict get $branch_domain sink_names]
+  set branch_cross_tier_nets [dict get $branch_domain branch_cross_tier_nets]
+  set branch_buffers [dict get $branch_domain branch_buffers]
+
+  set moved_sinks [_pin3d_record_list_field $record moved_sinks]
+  set retained_sinks [_pin3d_record_list_field $record retained_sinks]
+  set manifest_recovered 0
+  if {[_pin3d_record_has_placeholder_split_refs $record]} {
+    set moved_sinks $reachable_sinks
+    set retained_sinks {}
+    set manifest_recovered 1
+  }
+  set missing_moved [_list_minus $moved_sinks $reachable_sinks]
+  set leaked_retained {}
+  foreach retained_sink $retained_sinks {
+    if {[lsearch -exact $reachable_sinks $retained_sink] >= 0} {
+      lappend leaked_retained $retained_sink
+    }
+  }
+
+  set driver_net_name ""
+  set driver_iterm [_pin3d_find_iterm_by_name [dict get $record driver_pin]]
+  if {$driver_iterm ne ""} {
+    set driver_net_name [_pin3d_iterm_net_name $driver_iterm]
+  }
+  set moved_on_driver {}
+  if {$driver_net_name ne ""} {
+    foreach moved_sink $moved_sinks {
+      set moved_iterm [_pin3d_find_iterm_by_name $moved_sink]
+      if {$moved_iterm eq ""} {
+        continue
+      }
+      if {[_pin3d_iterm_net_name $moved_iterm] eq $driver_net_name} {
+        lappend moved_on_driver $moved_sink
+      }
+    }
+  }
+
+  set direct_branch_sinks {}
+  set branch_net_name [$branch_net getName]
+  foreach moved_sink $moved_sinks {
+    set moved_iterm [_pin3d_find_iterm_by_name $moved_sink]
+    if {$moved_iterm eq ""} {
+      continue
+    }
+    if {[_pin3d_iterm_net_name $moved_iterm] eq $branch_net_name} {
+      lappend direct_branch_sinks $moved_sink
+    }
+  }
+
+  set original_net_mixed_fanout 0
+  if {$original_net ne "" && $original_net ne "NULL"} {
+    set original_net_mixed_fanout [net_has_mixed_fanout $original_net]
+  }
+  set branch_net_mixed_fanout [net_has_mixed_fanout $branch_net]
+
+  if {[llength $missing_moved] > 0} {
+    return [dict create \
+      status violated \
+      reason moved_sinks_not_reachable \
+      manifest_recovered $manifest_recovered \
+      missing_moved $missing_moved \
+      leaked_retained $leaked_retained \
+      moved_on_driver $moved_on_driver \
+      original_net_mixed_fanout $original_net_mixed_fanout \
+      branch_net_mixed_fanout $branch_net_mixed_fanout \
+      branch_cross_tier_nets $branch_cross_tier_nets \
+      branch_buffers $branch_buffers]
+  }
+  if {[llength $leaked_retained] > 0} {
+    return [dict create \
+      status violated \
+      reason retained_sinks_leaked_to_branch \
+      manifest_recovered $manifest_recovered \
+      missing_moved $missing_moved \
+      leaked_retained $leaked_retained \
+      moved_on_driver $moved_on_driver \
+      original_net_mixed_fanout $original_net_mixed_fanout \
+      branch_net_mixed_fanout $branch_net_mixed_fanout \
+      branch_cross_tier_nets $branch_cross_tier_nets \
+      branch_buffers $branch_buffers]
+  }
+  if {[llength $moved_on_driver] > 0} {
+    return [dict create \
+      status violated \
+      reason moved_sinks_still_on_driver_net \
+      manifest_recovered $manifest_recovered \
+      missing_moved $missing_moved \
+      leaked_retained $leaked_retained \
+      moved_on_driver $moved_on_driver \
+      original_net_mixed_fanout $original_net_mixed_fanout \
+      branch_net_mixed_fanout $branch_net_mixed_fanout \
+      branch_cross_tier_nets $branch_cross_tier_nets \
+      branch_buffers $branch_buffers]
+  }
+  if {$original_net_mixed_fanout} {
+    return [dict create \
+      status violated \
+      reason original_net_still_mixed_fanout \
+      manifest_recovered $manifest_recovered \
+      missing_moved $missing_moved \
+      leaked_retained $leaked_retained \
+      moved_on_driver $moved_on_driver \
+      original_net_mixed_fanout $original_net_mixed_fanout \
+      branch_net_mixed_fanout $branch_net_mixed_fanout \
+      branch_cross_tier_nets $branch_cross_tier_nets \
+      branch_buffers $branch_buffers]
+  }
+  if {$branch_net_mixed_fanout} {
+    return [dict create \
+      status violated \
+      reason branch_net_still_mixed_fanout \
+      manifest_recovered $manifest_recovered \
+      missing_moved $missing_moved \
+      leaked_retained $leaked_retained \
+      moved_on_driver $moved_on_driver \
+      original_net_mixed_fanout $original_net_mixed_fanout \
+      branch_net_mixed_fanout $branch_net_mixed_fanout \
+      branch_cross_tier_nets $branch_cross_tier_nets \
+      branch_buffers $branch_buffers]
+  }
+  if {[llength $branch_cross_tier_nets] > 0} {
+    return [dict create \
+      status violated \
+      reason extra_cross_tier_branch \
+      manifest_recovered $manifest_recovered \
+      missing_moved $missing_moved \
+      leaked_retained $leaked_retained \
+      moved_on_driver $moved_on_driver \
+      original_net_mixed_fanout $original_net_mixed_fanout \
+      branch_net_mixed_fanout $branch_net_mixed_fanout \
+      branch_cross_tier_nets $branch_cross_tier_nets \
+      branch_buffers $branch_buffers]
+  }
+
+  if {!$literal_split_boundary} {
+    return [dict create \
+      status equivalent \
+      reason [expr {$manifest_recovered ? "manifest_recovered_same_tier" : "split_buffer_rewritten_same_tier"}] \
+      manifest_recovered $manifest_recovered \
+      missing_moved {} \
+      leaked_retained {} \
+      moved_on_driver {} \
+      original_net_mixed_fanout 0 \
+      branch_net_mixed_fanout 0 \
+      branch_cross_tier_nets {} \
+      branch_buffers $branch_buffers]
+  }
+
+  if {[llength $branch_buffers] > 0 || [llength $direct_branch_sinks] != [llength $moved_sinks]} {
+    return [dict create \
+      status equivalent \
+      reason [expr {$manifest_recovered ? "manifest_recovered_branch_rewritten" : "branch_rewritten_same_tier"}] \
+      manifest_recovered $manifest_recovered \
+      missing_moved {} \
+      leaked_retained {} \
+      moved_on_driver {} \
+      original_net_mixed_fanout 0 \
+      branch_net_mixed_fanout 0 \
+      branch_cross_tier_nets {} \
+      branch_buffers $branch_buffers]
+  }
+
+  return [dict create \
+    status valid \
+    reason [expr {$manifest_recovered ? "manifest_recovered_direct_split_preserved" : "direct_split_preserved"}] \
+    manifest_recovered $manifest_recovered \
+    missing_moved {} \
+    leaked_retained {} \
+    moved_on_driver {} \
+    original_net_mixed_fanout 0 \
+    branch_net_mixed_fanout 0 \
+    branch_cross_tier_nets {} \
+    branch_buffers {}]
+}
+
+proc _pin3d_anchor_inst_for_split_repair {driver_iterm moved_iterms} {
+  if {[llength $moved_iterms] > 0} {
+    return [[lindex $moved_iterms 0] getInst]
+  }
+  if {$driver_iterm ne ""} {
+    return [$driver_iterm getInst]
+  }
+  return ""
+}
+
+proc _pin3d_repair_split_entry {record {quiet 0}} {
+  set driver_iterm [_pin3d_find_iterm_by_name [dict get $record driver_pin]]
+  if {$driver_iterm eq ""} {
+    return [dict create repaired 0 reason driver_pin_missing]
+  }
+  set driver_net [_pin3d_iterm_net $driver_iterm]
+  if {$driver_net eq ""} {
+    return [dict create repaired 0 reason driver_net_missing]
+  }
+
+  set moved_iterms {}
+  foreach moved_sink [dict get $record moved_sinks] {
+    set moved_iterm [_pin3d_find_iterm_by_name $moved_sink]
+    if {$moved_iterm ne ""} {
+      lappend moved_iterms $moved_iterm
+    }
+  }
+  if {[llength $moved_iterms] == 0} {
+    return [dict create repaired 0 reason moved_sinks_missing]
+  }
+
+  set split_inst_name [dict get $record split_inst]
+  set existing_split_inst [_pin3d_find_inst_by_name $split_inst_name]
+  if {$existing_split_inst ne ""} {
+    catch {delete_instance $split_inst_name}
+  }
+
+  set buffer_master_name [_pin3d_choose_tier_buffer_master \
+    [dict get $record buffer_tier] \
+    [dict get $record buffer_master] \
+    [llength $moved_iterms]]
+  if {$buffer_master_name eq ""} {
+    return [dict create repaired 0 reason no_tier_buffer_master]
+  }
+
+  set buffer_master [_find_master_by_name $buffer_master_name]
+  if {$buffer_master eq ""} {
+    return [dict create repaired 0 reason buffer_master_lookup_failed]
+  }
+
+  set block [ord::get_db_block]
+  set branch_net_name [dict get $record branch_net]
+  set branch_net [_pin3d_find_net_by_name $branch_net_name]
+  if {$branch_net eq ""} {
+    set branch_net [odb::dbNet_create $block $branch_net_name]
+  }
+  if {$branch_net eq "" || $branch_net eq "NULL"} {
+    return [dict create repaired 0 reason branch_net_create_failed]
+  }
+
+  set split_inst [odb::dbInst_create $block $buffer_master $split_inst_name]
+  if {$split_inst eq "" || $split_inst eq "NULL"} {
+    return [dict create repaired 0 reason split_buffer_create_failed]
+  }
+
+  set split_info [_pin3d_buffer_inst_io $split_inst 1]
+  if {$split_info eq ""} {
+    return [dict create repaired 0 reason split_buffer_pin_lookup_failed]
+  }
+
+  set anchor_inst [_pin3d_anchor_inst_for_split_repair $driver_iterm $moved_iterms]
+  if {$anchor_inst ne ""} {
+    set anchor_loc [$anchor_inst getLocation]
+    $split_inst setLocation [lindex $anchor_loc 0] [lindex $anchor_loc 1]
+    catch {$split_inst setOrient [$anchor_inst getOrient]}
+    catch {$split_inst setPlacementStatus [$anchor_inst getPlacementStatus]}
+  }
+
+  catch {[dict get $split_info input] connect $driver_net}
+  catch {[dict get $split_info output] connect $branch_net}
+  foreach moved_iterm $moved_iterms {
+    catch {$moved_iterm connect $branch_net}
+  }
+
+  _pin3d_rebuild_name_caches
+  set post_status [_pin3d_validate_split_entry $record]
+  if {[dict get $post_status status] eq "violated"} {
+    return [dict create repaired 0 reason [dict get $post_status reason]]
+  }
+  return [dict create repaired 1 reason [dict get $post_status reason]]
+}
+
+proc pin3d_validate_and_repair_split_topology {stage_label {log_dir ""} {results_dir ""}} {
+  if {$results_dir eq ""} {
+    set results_dir [_get RESULTS_DIR]
+  }
+  if {$log_dir eq ""} {
+    set log_dir [_get LOG_DIR]
+  }
+
+  set manifest_path [pin3d_split_manifest_path $results_dir]
+  set records [pin3d_read_split_manifest $manifest_path]
+  if {[llength $records] == 0} {
+    return [dict create manifest_present 0 total 0 valid 0 equivalent 0 violated 0 repaired 0 repair_failed 0]
+  }
+
+  set auto_repair 1
+  if {[info exists ::env(PIN3D_SPLIT_AUTO_REPAIR)] && $::env(PIN3D_SPLIT_AUTO_REPAIR) ne ""} {
+    set auto_repair $::env(PIN3D_SPLIT_AUTO_REPAIR)
+  }
+
+  _pin3d_rebuild_name_caches
+
+  set report_path [file join $log_dir "${stage_label}.split_topology.summary.rpt"]
+  set fh [open $report_path w]
+  puts $fh "label $stage_label"
+  puts $fh "manifest_path $manifest_path"
+  puts $fh "auto_repair $auto_repair"
+
+  array set counts {
+    total 0
+    valid 0
+    equivalent 0
+    violated 0
+    repaired 0
+    repair_failed 0
+    ignored_clock 0
+  }
+
+  array set clock_net_lookup {}
+  foreach clock_net_name [_clock_net_name_set] {
+    set clock_net_lookup($clock_net_name) 1
+  }
+
+  foreach record $records {
+    set net_name [dict get $record original_net]
+    if {[info exists clock_net_lookup($net_name)]} {
+      incr counts(ignored_clock)
+      puts $fh [format "split_net %s status=ignored reason=clock_net_record" $net_name]
+      continue
+    }
+    incr counts(total)
+    set status_info [_pin3d_validate_split_entry $record]
+    set status [dict get $status_info status]
+    set reason [dict get $status_info reason]
+
+    if {$status eq "valid" || $status eq "equivalent"} {
+      incr counts($status)
+      puts $fh [format "split_net %s status=%s reason=%s" $net_name $status $reason]
+      continue
+    }
+
+    incr counts(violated)
+    puts $fh [format "split_net %s status=violated reason=%s" $net_name $reason]
+    foreach key {missing_moved leaked_retained moved_on_driver original_net_mixed_fanout branch_net_mixed_fanout branch_cross_tier_nets branch_buffers} {
+      if {[dict exists $status_info $key] && [llength [dict get $status_info $key]] > 0} {
+        puts $fh [format "  %s %s" $key [dict get $status_info $key]]
+      }
+    }
+
+    if {$auto_repair} {
+      set repair_info [_pin3d_repair_split_entry $record 1]
+      if {[dict get $repair_info repaired]} {
+        incr counts(repaired)
+        puts $fh [format "  repaired 1 reason=%s" [dict get $repair_info reason]]
+      } else {
+        incr counts(repair_failed)
+        puts $fh [format "  repaired 0 reason=%s" [dict get $repair_info reason]]
+      }
+    }
+  }
+
+  foreach key {total valid equivalent violated repaired repair_failed ignored_clock} {
+    puts $fh [format "%s %d" $key $counts($key)]
+  }
+  close $fh
+
+  puts "INFO(OR): split topology $stage_label total=$counts(total) valid=$counts(valid) equivalent=$counts(equivalent) violated=$counts(violated) repaired=$counts(repaired) repair_failed=$counts(repair_failed) ignored_clock=$counts(ignored_clock)"
+  return [dict create \
+    manifest_present 1 \
+    total $counts(total) \
+    valid $counts(valid) \
+    equivalent $counts(equivalent) \
+    violated $counts(violated) \
+    repaired $counts(repaired) \
+    repair_failed $counts(repair_failed) \
+    ignored_clock $counts(ignored_clock)]
+}
+
+proc _pin3d_split_buffer_db_insts {} {
+  set block [ord::get_db_block]
+  set out {}
+  foreach inst [$block getInsts] {
+    if {[_or_inst_tier $inst] eq "split_buffer"} {
+      lappend out $inst
+    }
+  }
+  return $out
+}
+
+proc _net_touches_split_buffer_inst {net_ptr} {
+  foreach iterm [$net_ptr getITerms] {
+    if {[_or_inst_tier [$iterm getInst]] eq "split_buffer"} {
+      return 1
+    }
+  }
+  return 0
+}
+
+proc _pin3d_manifest_name_set {records key} {
+  array set lookup {}
+  foreach record $records {
+    if {![dict exists $record $key]} {
+      continue
+    }
+    set name [string trim [dict get $record $key]]
+    if {$name eq ""} {
+      continue
+    }
+    set lookup($name) 1
+  }
+  return [array names lookup]
+}
+
+proc _collect_split_structure_snapshot {} {
+  set manifest_records [pin3d_read_split_manifest]
+  if {[llength $manifest_records] > 0} {
+    set split_buffer_instances {}
+    set split_branch_nets {}
+    array set related_lookup {}
+
+    foreach inst_name [_pin3d_manifest_name_set $manifest_records split_inst] {
+      set inst [_pin3d_find_inst_by_name $inst_name]
+      if {$inst ne "" && $inst ne "NULL"} {
+        lappend split_buffer_instances $inst_name
+      }
+    }
+
+    foreach net_name [_pin3d_manifest_name_set $manifest_records branch_net] {
+      set net [_pin3d_find_net_by_name $net_name]
+      if {$net ne "" && $net ne "NULL"} {
+        lappend split_branch_nets $net_name
+      }
+    }
+
+    foreach net_name [concat \
+      [_pin3d_manifest_name_set $manifest_records original_net] \
+      [_pin3d_manifest_name_set $manifest_records branch_net]] {
+      set net [_pin3d_find_net_by_name $net_name]
+      if {$net eq "" || $net eq "NULL"} {
+        continue
+      }
+      lassign [tier_net_structural_presence_detail_counts $net] upper_count bottom_count io_count unknown_count
+      set net_type [_cross_tier_category_from_presence \
+        [expr {$upper_count > 0}] \
+        [expr {$bottom_count > 0}] \
+        [expr {$io_count > 0}] \
+        [expr {$unknown_count > 0}]]
+      if {$net_type ne "" && $net_type ne "Unknown_Tier"} {
+        set related_lookup($net_name) 1
+      }
+    }
+
+    return [dict create \
+      manifest_present 1 \
+      manifest_records [llength $manifest_records] \
+      split_buffer_instances [lsort -unique $split_buffer_instances] \
+      split_branch_nets [lsort -unique $split_branch_nets] \
+      split_related_cross_tier_nets [lsort -unique [array names related_lookup]]]
+  }
+
+  set block [ord::get_db_block]
+  set split_buffer_instances {}
+  set split_branch_nets {}
+  set split_related_cross_tier_nets {}
+
+  foreach inst [$block getInsts] {
+    if {[_or_inst_tier $inst] eq "split_buffer"} {
+      lappend split_buffer_instances [$inst getName]
+    }
+  }
+
+  foreach net [$block getNets] {
+    set net_name [$net getName]
+    set split_related [expr {[_split_branch_name_match $net_name] || [_net_touches_split_buffer_inst $net]}]
+    if {[_split_branch_name_match $net_name]} {
+      lappend split_branch_nets $net_name
+    }
+    if {!$split_related} {
+      continue
+    }
+
+    lassign [tier_net_structural_presence_detail_counts $net] upper_count bottom_count io_count unknown_count
+    set net_type [_cross_tier_category_from_presence \
+      [expr {$upper_count > 0}] \
+      [expr {$bottom_count > 0}] \
+      [expr {$io_count > 0}] \
+      [expr {$unknown_count > 0}]]
+    if {$net_type ne "" && $net_type ne "Unknown_Tier"} {
+      lappend split_related_cross_tier_nets $net_name
+    }
+  }
+
+  return [dict create \
+    manifest_present 0 \
+    manifest_records 0 \
+    split_buffer_instances [lsort -unique $split_buffer_instances] \
+    split_branch_nets [lsort -unique $split_branch_nets] \
+    split_related_cross_tier_nets [lsort -unique $split_related_cross_tier_nets]]
+}
+
+proc report_split_structure_snapshot {report_path args} {
+  array set opt {
+    -label ""
+    -quiet 0
+  }
+  if {([llength $args] % 2) != 0} {
+    error "report_split_structure_snapshot: args must be key-value pairs, got: $args"
+  }
+  foreach {k v} $args {
+    if {![info exists opt($k)]} {
+      error "report_split_structure_snapshot: unknown option $k"
+    }
+    set opt($k) $v
+  }
+
+  set snapshot [_collect_split_structure_snapshot]
+  set split_buffer_instances [dict get $snapshot split_buffer_instances]
+  set split_branch_nets [dict get $snapshot split_branch_nets]
+  set split_related_cross_tier_nets [dict get $snapshot split_related_cross_tier_nets]
+
+  if {$report_path ne ""} {
+    set fh [open $report_path w]
+    puts $fh "label $opt(-label)"
+    puts $fh [format "manifest_present %d" [dict get $snapshot manifest_present]]
+    puts $fh [format "manifest_records %d" [dict get $snapshot manifest_records]]
+    puts $fh [format "split_buffer_instances %d" [llength $split_buffer_instances]]
+    puts $fh [format "split_branch_nets %d" [llength $split_branch_nets]]
+    puts $fh [format "split_related_cross_tier_nets %d" [llength $split_related_cross_tier_nets]]
+    foreach inst_name $split_buffer_instances {
+      puts $fh "split_buffer_instance $inst_name"
+    }
+    foreach net_name $split_branch_nets {
+      puts $fh "split_branch_net $net_name"
+    }
+    foreach net_name $split_related_cross_tier_nets {
+      puts $fh "split_related_cross_tier_net $net_name"
+    }
+    close $fh
+  }
+
+  if {!$opt(-quiet)} {
+    puts "INFO(OR): split snapshot $opt(-label) split_buffers=[llength $split_buffer_instances] branch_nets=[llength $split_branch_nets] split_related_cross_tier=[llength $split_related_cross_tier_nets]"
+  }
+
+  return $snapshot
+}
+
+proc _list_minus {lhs rhs} {
+  array set rhs_lookup {}
+  foreach item $rhs {
+    set rhs_lookup($item) 1
+  }
+  set out {}
+  foreach item $lhs {
+    if {![info exists rhs_lookup($item)]} {
+      lappend out $item
+    }
+  }
+  return [lsort -unique $out]
+}
+
+proc _read_split_structure_snapshot {report_path} {
+  if {$report_path eq "" || ![file exists $report_path]} {
+    return ""
+  }
+
+  set manifest_present 0
+  set manifest_records 0
+  set split_buffer_instances {}
+  set split_branch_nets {}
+  set split_related_cross_tier_nets {}
+
+  set fh [open $report_path r]
+  while {[gets $fh line] >= 0} {
+    if {[regexp {^manifest_present\s+(.+)$} $line -> value]} {
+      set manifest_present $value
+      continue
+    }
+    if {[regexp {^manifest_records\s+(.+)$} $line -> value]} {
+      set manifest_records $value
+      continue
+    }
+    if {[regexp {^split_buffer_instance\s+(.+)$} $line -> name]} {
+      lappend split_buffer_instances $name
+      continue
+    }
+    if {[regexp {^split_branch_net\s+(.+)$} $line -> name]} {
+      lappend split_branch_nets $name
+      continue
+    }
+    if {[regexp {^split_related_cross_tier_net\s+(.+)$} $line -> name]} {
+      lappend split_related_cross_tier_nets $name
+      continue
+    }
+  }
+  close $fh
+
+  return [dict create \
+    manifest_present $manifest_present \
+    manifest_records $manifest_records \
+    split_buffer_instances [lsort -unique $split_buffer_instances] \
+    split_branch_nets [lsort -unique $split_branch_nets] \
+    split_related_cross_tier_nets [lsort -unique $split_related_cross_tier_nets]]
+}
+
+proc report_split_structure_transition {summary_path before_report after_report args} {
+  array set opt {
+    -label ""
+    -quiet 0
+  }
+  if {([llength $args] % 2) != 0} {
+    error "report_split_structure_transition: args must be key-value pairs, got: $args"
+  }
+  foreach {k v} $args {
+    if {![info exists opt($k)]} {
+      error "report_split_structure_transition: unknown option $k"
+    }
+    set opt($k) $v
+  }
+
+  set before_snapshot [_read_split_structure_snapshot $before_report]
+  if {$before_snapshot eq ""} {
+    set before_snapshot [report_split_structure_snapshot $before_report -label "${opt(-label)} before" -quiet $opt(-quiet)]
+  }
+  set after_snapshot [report_split_structure_snapshot $after_report -label "${opt(-label)} after" -quiet $opt(-quiet)]
+
+  set before_split_buffers [dict get $before_snapshot split_buffer_instances]
+  set after_split_buffers [dict get $after_snapshot split_buffer_instances]
+  set before_branch_nets [dict get $before_snapshot split_branch_nets]
+  set after_branch_nets [dict get $after_snapshot split_branch_nets]
+  set before_split_related [dict get $before_snapshot split_related_cross_tier_nets]
+  set after_split_related [dict get $after_snapshot split_related_cross_tier_nets]
+
+  set added_split_buffers [_list_minus $after_split_buffers $before_split_buffers]
+  set removed_split_buffers [_list_minus $before_split_buffers $after_split_buffers]
+  set added_branch_nets [_list_minus $after_branch_nets $before_branch_nets]
+  set removed_branch_nets [_list_minus $before_branch_nets $after_branch_nets]
+
+  if {$summary_path ne ""} {
+    set fh [open $summary_path w]
+    puts $fh "label $opt(-label)"
+    puts $fh [format "before_manifest_present %d" [dict get $before_snapshot manifest_present]]
+    puts $fh [format "after_manifest_present %d" [dict get $after_snapshot manifest_present]]
+    puts $fh [format "before_manifest_records %d" [dict get $before_snapshot manifest_records]]
+    puts $fh [format "after_manifest_records %d" [dict get $after_snapshot manifest_records]]
+    puts $fh [format "before_split_buffer_instances %d" [llength $before_split_buffers]]
+    puts $fh [format "after_split_buffer_instances %d" [llength $after_split_buffers]]
+    puts $fh [format "before_split_branch_nets %d" [llength $before_branch_nets]]
+    puts $fh [format "after_split_branch_nets %d" [llength $after_branch_nets]]
+    puts $fh [format "before_split_related_cross_tier_nets %d" [llength $before_split_related]]
+    puts $fh [format "after_split_related_cross_tier_nets %d" [llength $after_split_related]]
+    puts $fh [format "delta_split_buffer_instances %d" [expr {[llength $after_split_buffers] - [llength $before_split_buffers]}]]
+    puts $fh [format "delta_split_branch_nets %d" [expr {[llength $after_branch_nets] - [llength $before_branch_nets]}]]
+    puts $fh [format "delta_split_related_cross_tier_nets %d" [expr {[llength $after_split_related] - [llength $before_split_related]}]]
+    foreach name $removed_split_buffers {
+      puts $fh "removed_split_buffer_instance $name"
+    }
+    foreach name $added_split_buffers {
+      puts $fh "added_split_buffer_instance $name"
+    }
+    foreach name $removed_branch_nets {
+      puts $fh "removed_split_branch_net $name"
+    }
+    foreach name $added_branch_nets {
+      puts $fh "added_split_branch_net $name"
+    }
+    close $fh
+  }
+
+  if {!$opt(-quiet)} {
+    puts "INFO(OR): split transition $opt(-label) split_buffers=[llength $before_split_buffers]->[llength $after_split_buffers] branch_nets=[llength $before_branch_nets]->[llength $after_branch_nets]"
+  }
+
+  return [dict create before $before_snapshot after $after_snapshot]
 }
 
 proc _protect_pin3d_split_buffers {quiet {protect 1}} {
@@ -531,724 +1633,8 @@ proc _protect_pin3d_split_buffers {quiet {protect 1}} {
   return $touched
 }
 
-proc _or_inst_tier {inst} {
-  set master [$inst getMaster]
-  set mname [$master getName]
-  set iname [$inst getName]
-  if {[_or_is_split_buffer_name $mname] || [_or_is_split_buffer_name $iname]} {
-    return "split_buffer"
-  }
-  if {[string match -nocase "*_upper" $mname]} {
-    return "upper"
-  }
-  if {[string match -nocase "*_bottom" $mname] || [string match -nocase "*_lower" $mname]} {
-    return "bottom"
-  }
-  return "unknown"
-}
 
-proc _net_tier_presence {net_ptr} {
-  set upper_count 0
-  set bottom_count 0
-  set unknown_count 0
-
-  foreach it [$net_ptr getITerms] {
-    set mt [$it getMTerm]
-    if {[catch {set st [$mt getSigType]}]} {
-      set st "SIGNAL"
-    }
-    if {$st eq "POWER" || $st eq "GROUND"} {
-      continue
-    }
-
-    set tier [_or_inst_tier [$it getInst]]
-    switch -- $tier {
-      upper   { incr upper_count }
-      bottom  { incr bottom_count }
-      split_buffer { continue }
-      default { incr unknown_count }
-    }
-  }
-
-  return [list $upper_count $bottom_count $unknown_count]
-}
-
-proc _or_layer_to_tier {layer_name} {
-  set layer_name [string trim $layer_name]
-  if {$layer_name eq ""} {
-    return "unknown"
-  }
-
-  set lname [string tolower $layer_name]
-  if {$lname eq "hb_layer"} {
-    return "unknown"
-  }
-  if {[string match "via*" $lname]} {
-    return "unknown"
-  }
-  if {[string match "*_m" $lname]} {
-    return "upper"
-  }
-  return "bottom"
-}
-
-proc _or_bterm_routing_layers {bterm_ptr} {
-  set layers {}
-  if {$bterm_ptr eq ""} {
-    return $layers
-  }
-
-  if {[catch {set bpins [$bterm_ptr getBPins]}]} {
-    return $layers
-  }
-  foreach bpin $bpins {
-    if {[catch {set boxes [$bpin getBoxes]}]} {
-      continue
-    }
-    foreach box $boxes {
-      if {[catch {set layer [$box getTechLayer]}]} {
-        continue
-      }
-      if {$layer eq "" || $layer eq "NULL"} {
-        continue
-      }
-      if {[catch {set layer_name [$layer getName]}]} {
-        continue
-      }
-      if {$layer_name eq ""} {
-        continue
-      }
-      lappend layers $layer_name
-    }
-  }
-  return [lsort -unique $layers]
-}
-
-proc _or_bterm_tier {bterm_ptr} {
-  set has_upper 0
-  set has_bottom 0
-  foreach layer [_or_bterm_routing_layers $bterm_ptr] {
-    switch -- [_or_layer_to_tier $layer] {
-      upper {
-        set has_upper 1
-      }
-      bottom {
-        set has_bottom 1
-      }
-      default {
-      }
-    }
-  }
-
-  if {$has_upper && !$has_bottom} {
-    return "upper"
-  }
-  if {$has_bottom && !$has_upper} {
-    return "bottom"
-  }
-  return "unknown"
-}
-
-proc tier_net_presence_detail_counts {net_ptr} {
-  set upper_count 0
-  set bottom_count 0
-  set io_count 0
-  set unknown_count 0
-
-  foreach it [$net_ptr getITerms] {
-    set mt [$it getMTerm]
-    if {[catch {set st [$mt getSigType]}]} {
-      set st "SIGNAL"
-    }
-    if {$st eq "POWER" || $st eq "GROUND"} {
-      continue
-    }
-
-    set tier [_or_inst_tier [$it getInst]]
-    switch -- $tier {
-      upper   { incr upper_count }
-      bottom  { incr bottom_count }
-      split_buffer { continue }
-      default { incr unknown_count }
-    }
-  }
-
-  if {![catch {set bterms [$net_ptr getBTerms]}]} {
-    foreach bterm $bterms {
-      if {[catch {set st [$bterm getSigType]}]} {
-        set st "SIGNAL"
-      }
-      if {$st eq "POWER" || $st eq "GROUND"} {
-        continue
-      }
-      incr io_count
-      switch -- [_or_bterm_tier $bterm] {
-        upper {
-          incr upper_count
-        }
-        bottom {
-          incr bottom_count
-        }
-        default {
-          incr unknown_count
-        }
-      }
-    }
-  }
-
-  return [list $upper_count $bottom_count $io_count $unknown_count]
-}
-
-proc _cross_tier_category_from_presence {has_upper has_bottom has_io has_unknown} {
-  if {$has_upper && $has_bottom && $has_io} {
-    return "Upper_Bottom_IO"
-  }
-  if {$has_upper && $has_bottom} {
-    return "Upper_Bottom"
-  }
-  if {$has_upper && $has_io} {
-    return "Upper_IO"
-  }
-  if {$has_bottom && $has_io} {
-    return "Bottom_IO"
-  }
-  if {$has_unknown} {
-    return "Unknown_Tier"
-  }
-  return ""
-}
-
-proc extract_cross_tier_net_stats {list_rpt_path args} {
-  array set opt {
-    -clock_only 0
-  }
-  if {([llength $args] % 2) != 0} {
-    error "extract_cross_tier_nets: args must be key-value pairs, got: $args"
-  }
-  foreach {k v} $args {
-    if {![info exists opt($k)]} {
-      error "extract_cross_tier_nets: unknown option $k"
-    }
-    set opt($k) $v
-  }
-
-  set total_cross_tier 0
-  array set category_counts {
-    Upper_Bottom    0
-    Upper_IO        0
-    Bottom_IO       0
-    Upper_Bottom_IO 0
-    Unknown_Tier    0
-  }
-
-  set report_lines [list "# Cross-Tier Net Report"]
-  lappend report_lines [format "%-40s | %s" "Net Name" "Type"]
-  lappend report_lines "-----------------------------------------|------------------"
-
-  array set clock_net_lookup {}
-  if {$opt(-clock_only)} {
-    foreach clock_net_name [_clock_net_name_set] {
-      set clock_net_lookup($clock_net_name) 1
-    }
-  }
-
-  set block [ord::get_db_block]
-  foreach net [$block getNets] {
-    set sig_type [$net getSigType]
-    if {$sig_type eq "POWER" || $sig_type eq "GROUND"} {
-      continue
-    }
-    if {$opt(-clock_only) && ![info exists clock_net_lookup([$net getName])]} {
-      continue
-    }
-
-    lassign [tier_net_presence_detail_counts $net] upper_count bottom_count io_count unknown_count
-    set has_upper [expr {$upper_count > 0}]
-    set has_bottom [expr {$bottom_count > 0}]
-    set has_io [expr {$io_count > 0}]
-    set has_unknown [expr {$unknown_count > 0}]
-    set net_type [_cross_tier_category_from_presence $has_upper $has_bottom $has_io $has_unknown]
-
-    if {$net_type ne ""} {
-      if {$net_type ne "Unknown_Tier"} {
-        incr total_cross_tier
-      }
-      incr category_counts($net_type)
-      lappend report_lines [format "%-40s | %s" [$net getName] $net_type]
-    }
-  }
-
-  lappend report_lines ""
-  lappend report_lines [format "Total Cross-Tier Nets: %d" $total_cross_tier]
-  lappend report_lines "Category Totals:"
-  foreach key {Upper_Bottom Upper_IO Bottom_IO Upper_Bottom_IO Unknown_Tier} {
-    lappend report_lines [format "  %-18s %d" $key $category_counts($key)]
-  }
-
-  if {$list_rpt_path ne ""} {
-    set fh [open $list_rpt_path w]
-    foreach line $report_lines {
-      puts $fh $line
-    }
-    close $fh
-  }
-
-  return [dict create \
-    cross_tier_all $total_cross_tier \
-    upper_bottom $category_counts(Upper_Bottom) \
-    upper_io $category_counts(Upper_IO) \
-    bottom_io $category_counts(Bottom_IO) \
-    upper_bottom_io $category_counts(Upper_Bottom_IO) \
-    unknown $category_counts(Unknown_Tier)]
-}
-
-proc extract_cross_tier_nets {list_rpt_path args} {
-  return [dict get [extract_cross_tier_net_stats $list_rpt_path {*}$args] cross_tier_all]
-}
-
-proc _cross_tier_stats_brief {stats} {
-  return [format "all=%d UB=%d UIO=%d BIO=%d UBIO=%d UNK=%d" \
-    [dict get $stats cross_tier_all] \
-    [dict get $stats upper_bottom] \
-    [dict get $stats upper_io] \
-    [dict get $stats bottom_io] \
-    [dict get $stats upper_bottom_io] \
-    [dict get $stats unknown]]
-}
-
-proc _read_cross_tier_report_stats {report_path} {
-  if {$report_path eq "" || ![file exists $report_path]} {
-    return ""
-  }
-
-  set stats [dict create \
-    cross_tier_all 0 \
-    upper_bottom 0 \
-    upper_io 0 \
-    bottom_io 0 \
-    upper_bottom_io 0 \
-    unknown 0]
-
-  set fh [open $report_path r]
-  while {[gets $fh line] >= 0} {
-    if {[regexp {^Total Cross-Tier Nets:\s+([0-9]+)} $line -> value]} {
-      dict set stats cross_tier_all $value
-      continue
-    }
-    if {[regexp {^\s*Upper_Bottom\s+([0-9]+)} $line -> value]} {
-      dict set stats upper_bottom $value
-      continue
-    }
-    if {[regexp {^\s*Upper_IO\s+([0-9]+)} $line -> value]} {
-      dict set stats upper_io $value
-      continue
-    }
-    if {[regexp {^\s*Bottom_IO\s+([0-9]+)} $line -> value]} {
-      dict set stats bottom_io $value
-      continue
-    }
-    if {[regexp {^\s*Upper_Bottom_IO\s+([0-9]+)} $line -> value]} {
-      dict set stats upper_bottom_io $value
-      continue
-    }
-    if {[regexp {^\s*Unknown_Tier\s+([0-9]+)} $line -> value]} {
-      dict set stats unknown $value
-      continue
-    }
-  }
-  close $fh
-  return $stats
-}
-
-proc report_cross_tier_snapshot {report_path args} {
-  array set opt {
-    -label ""
-    -clock_only 0
-    -quiet 0
-  }
-  if {([llength $args] % 2) != 0} {
-    error "report_cross_tier_snapshot: args must be key-value pairs, got: $args"
-  }
-  foreach {k v} $args {
-    if {![info exists opt($k)]} {
-      error "report_cross_tier_snapshot: unknown option $k"
-    }
-    set opt($k) $v
-  }
-
-  set stats [extract_cross_tier_net_stats $report_path -clock_only $opt(-clock_only)]
-  if {!$opt(-quiet)} {
-    set label $opt(-label)
-    if {$label eq ""} {
-      set label [file tail $report_path]
-    }
-    puts "INFO(OR): cross-tier snapshot $label [_cross_tier_stats_brief $stats]"
-  }
-  return $stats
-}
-
-proc report_cross_tier_transition {summary_path before_report after_report args} {
-  array set opt {
-    -label ""
-    -clock_only 0
-    -quiet 0
-  }
-  if {([llength $args] % 2) != 0} {
-    error "report_cross_tier_transition: args must be key-value pairs, got: $args"
-  }
-  foreach {k v} $args {
-    if {![info exists opt($k)]} {
-      error "report_cross_tier_transition: unknown option $k"
-    }
-    set opt($k) $v
-  }
-
-  set before_stats [_read_cross_tier_report_stats $before_report]
-  if {$before_stats eq ""} {
-    set before_stats [report_cross_tier_snapshot $before_report -label "${opt(-label)} before" -clock_only $opt(-clock_only) -quiet $opt(-quiet)]
-  } elseif {!$opt(-quiet)} {
-    puts "INFO(OR): cross-tier snapshot ${opt(-label)} before [_cross_tier_stats_brief $before_stats]"
-  }
-  set after_stats  [report_cross_tier_snapshot $after_report  -label "${opt(-label)} after"  -clock_only $opt(-clock_only) -quiet $opt(-quiet)]
-
-  if {!$opt(-quiet)} {
-    set before_all [dict get $before_stats cross_tier_all]
-    set after_all [dict get $after_stats cross_tier_all]
-    puts "INFO(OR): cross-tier transition $opt(-label) before=$before_all after=$after_all delta=[expr {$after_all - $before_all}]"
-  }
-
-  if {$summary_path ne ""} {
-    set fh [open $summary_path w]
-    puts $fh [format "label %s" $opt(-label)]
-    puts $fh [format "clock_only %d" $opt(-clock_only)]
-    foreach {tag stats} [list before $before_stats after $after_stats] {
-      puts $fh "$tag [_cross_tier_stats_brief $stats]"
-      puts $fh [format "%s_cross_tier_all %d" $tag [dict get $stats cross_tier_all]]
-      puts $fh [format "%s_upper_bottom %d" $tag [dict get $stats upper_bottom]]
-      puts $fh [format "%s_upper_io %d" $tag [dict get $stats upper_io]]
-      puts $fh [format "%s_bottom_io %d" $tag [dict get $stats bottom_io]]
-      puts $fh [format "%s_upper_bottom_io %d" $tag [dict get $stats upper_bottom_io]]
-      puts $fh [format "%s_unknown %d" $tag [dict get $stats unknown]]
-    }
-    puts $fh [format "delta_cross_tier_all %d" [expr {[dict get $after_stats cross_tier_all] - [dict get $before_stats cross_tier_all]}]]
-    close $fh
-  }
-
-  return [dict create before $before_stats after $after_stats]
-}
-
-proc _net_optimization_class {net_ptr} {
-  lassign [tier_net_presence_detail_counts $net_ptr] upper_count bottom_count io_count unknown_count
-  set has_upper [expr {$upper_count > 0}]
-  set has_bottom [expr {$bottom_count > 0}]
-  set has_unknown [expr {$unknown_count > 0}]
-
-  if {$has_unknown} {
-    return "unknown"
-  }
-  if {$has_upper && $has_bottom} {
-    return "mixed"
-  }
-  if {$has_upper} {
-    return "upper_only"
-  }
-  if {$has_bottom} {
-    return "bottom_only"
-  }
-  if {$io_count > 0} {
-    return "ignore"
-  }
-  return "ignore"
-}
-
-proc _net_class_is_unlocked {allow_net klass} {
-  switch -- $allow_net {
-    all {
-      return [expr {$klass ne "unknown"}]
-    }
-    upper_only {
-      return [expr {$klass eq "upper_only" || $klass eq "mixed"}]
-    }
-    bottom_only {
-      return [expr {$klass eq "bottom_only" || $klass eq "mixed"}]
-    }
-    default {
-      error "Unexpected allow_net class '$allow_net'"
-    }
-  }
-}
-
-proc _set_net_dont_touch_flag {net_name flag quiet} {
-  set net_obj [get_nets -quiet $net_name]
-  if {$net_obj eq ""} {
-    if {!$quiet} {
-      puts "WARN(OR): cannot resolve net object for $net_name"
-    }
-    return 0
-  }
-
-  if {$flag} {
-    if {[catch {set_dont_touch $net_obj} err]} {
-      if {!$quiet} {
-        puts "WARN(OR): failed to lock net $net_name : $err"
-      }
-      return 0
-    }
-  } else {
-    if {[catch {unset_dont_touch $net_obj} err]} {
-      if {!$quiet} {
-        puts "WARN(OR): failed to unlock net $net_name : $err"
-      }
-      return 0
-    }
-  }
-  return 1
-}
-
-proc _clock_port_name_candidates {{sdc_path ""}} {
-  array set seen {}
-  set out {}
-
-  foreach var_name {::clk_port_name clk_port_name} {
-    if {[uplevel #0 [list info exists $var_name]]} {
-      set port_name [uplevel #0 [list set $var_name]]
-      if {$port_name ne "" && $port_name ne "NULL" && ![info exists seen($port_name)]} {
-        set seen($port_name) 1
-        lappend out $port_name
-      }
-    }
-  }
-
-  foreach env_name {CLOCK_PORT CLK_PORT_NAME CLK_PORT} {
-    if {[info exists ::env($env_name)] && $::env($env_name) ne ""} {
-      foreach port_name $::env($env_name) {
-        if {$port_name ne "" && $port_name ne "NULL" && ![info exists seen($port_name)]} {
-          set seen($port_name) 1
-          lappend out $port_name
-        }
-      }
-    }
-  }
-
-  if {$sdc_path ne "" && [file exists $sdc_path]} {
-    set fp [open $sdc_path r]
-    while {[gets $fp line] >= 0} {
-      if {[regexp {^\s*set\s+clk_port_name\s+([^\s#;]+)} $line -> port_name]} {
-        if {$port_name ne "" && $port_name ne "NULL" && ![info exists seen($port_name)]} {
-          set seen($port_name) 1
-          lappend out $port_name
-        }
-      }
-      if {[regexp {create_clock.*\[get_ports\s+([^\]\s]+)\]} $line -> port_name]} {
-        if {[string index $port_name 0] eq "$"} {
-          continue
-        }
-        if {$port_name ne "" && $port_name ne "NULL" && ![info exists seen($port_name)]} {
-          set seen($port_name) 1
-          lappend out $port_name
-        }
-      }
-    }
-    close $fp
-  }
-
-  return $out
-}
-
-proc _clock_net_name_set {{sdc_path ""}} {
-  array set clock_names {}
-  foreach port_name [_clock_port_name_candidates $sdc_path] {
-    set nets {}
-    if {![catch {set nets [get_nets -quiet $port_name]}] && [llength $nets] > 0} {
-      # prefer direct net lookup because some OpenROAD builds reject Port objects
-    } elseif {![catch {set port_obj [get_ports $port_name]}] && [llength $port_obj] > 0} {
-      catch {set nets [get_nets -quiet -of_objects $port_obj]}
-    }
-    if {[llength $nets] == 0} {
-      continue
-    }
-    foreach net_obj $nets {
-      if {[catch {set net_name [get_name $net_obj]}] || $net_name eq "" || $net_name eq "NULL"} {
-        continue
-      }
-      set clock_names($net_name) 1
-    }
-  }
-
-  if {[array size clock_names] > 0} {
-    return [array names clock_names]
-  }
-
-  foreach clock [all_clocks] {
-    if {$clock eq "" || $clock eq "NULL"} {
-      continue
-    }
-    set clock_obj $clock
-    if {![catch {set maybe_name [get_name $clock]}] && $maybe_name ne "" && $maybe_name ne "NULL"} {
-      set clock_obj $maybe_name
-    }
-    if {[catch {set sources [get_property -object_type clock $clock_obj sources]}] || [llength $sources] == 0} {
-      continue
-    }
-    set clean_sources {}
-    foreach src $sources {
-      if {$src eq "" || $src eq "NULL"} {
-        continue
-      }
-      lappend clean_sources $src
-    }
-    if {[llength $clean_sources] == 0} {
-      continue
-    }
-    if {[catch {set nets [get_nets -quiet -of_objects $clean_sources]}]} {
-      continue
-    }
-    foreach net_obj $nets {
-      if {[catch {set net_name [get_name $net_obj]}] || $net_name eq ""} {
-        continue
-      }
-      set clock_names($net_name) 1
-    }
-  }
-  return [array names clock_names]
-}
-
-proc _apply_net_class_optimization_mask {active_class quiet {skip_clock_nets 0}} {
-  array set stats {
-    upper_only_locked 0
-    upper_only_unlocked 0
-    bottom_only_locked 0
-    bottom_only_unlocked 0
-    mixed_locked 0
-    mixed_unlocked 0
-    unknown_locked 0
-    unknown_unlocked 0
-  }
-  set ignore_cnt 0
-  set fail_cnt 0
-  set clock_skip_cnt 0
-
-  array set clock_net_lookup {}
-  if {$skip_clock_nets} {
-    foreach clock_net_name [_clock_net_name_set] {
-      set clock_net_lookup($clock_net_name) 1
-    }
-  }
-
-  set block [ord::get_db_block]
-  foreach net [$block getNets] {
-    set sig_type [$net getSigType]
-    if {$sig_type eq "POWER" || $sig_type eq "GROUND"} {
-      continue
-    }
-
-    set klass [_net_optimization_class $net]
-    if {$klass eq "ignore"} {
-      incr ignore_cnt
-      continue
-    }
-
-    set net_name [$net getName]
-    if {$skip_clock_nets && [info exists clock_net_lookup($net_name)]} {
-      if {![_set_net_dont_touch_flag $net_name 0 $quiet]} {
-        incr fail_cnt
-      } else {
-        incr clock_skip_cnt
-      }
-      continue
-    }
-    set unlock_net [_net_class_is_unlocked $active_class $klass]
-    set lock_net [expr {!$unlock_net}]
-    if {![_set_net_dont_touch_flag $net_name $lock_net $quiet]} {
-      incr fail_cnt
-      continue
-    }
-
-    if {$lock_net} {
-      incr stats(${klass}_locked)
-    } else {
-      incr stats(${klass}_unlocked)
-    }
-  }
-
-  if {!$quiet} {
-    puts "INFO(OR): Applied staged net-class mask for active_class=$active_class"
-    puts "INFO(OR):   upper_only unlocked=$stats(upper_only_unlocked) locked=$stats(upper_only_locked)"
-    puts "INFO(OR):   bottom_only unlocked=$stats(bottom_only_unlocked) locked=$stats(bottom_only_locked)"
-    puts "INFO(OR):   mixed unlocked=$stats(mixed_unlocked) locked=$stats(mixed_locked)"
-    puts "INFO(OR):   unknown unlocked=$stats(unknown_unlocked) locked=$stats(unknown_locked)"
-    puts "INFO(OR):   ignored=$ignore_cnt clock_skipped=$clock_skip_cnt failures=$fail_cnt"
-  }
-}
-
-# ------------------------------------------------------------
-# Apply tier policy
-# Options:
-#   -quiet 0/1 (default 0)
-# ------------------------------------------------------------
-proc apply_tier_policy {tier args} {
-  set tier [string tolower $tier]
-  if {$tier ne "upper" && $tier ne "bottom"} {
-    error "apply_tier_policy: tier must be 'upper' or 'bottom'"
-  }
-
-  array set opt {
-    -quiet    0
-    -fixlib   0
-    -allow_net all
-    -rebuild_rows 1
-    -skip_clock_nets 0
-    -protect_split_buffers 1
-  }
-  if {([llength $args] % 2) != 0} {
-    error "apply_tier_policy: args must be key-value pairs, got: $args"
-  }
-  foreach {k v} $args {
-    if {![info exists opt($k)]} { error "apply_tier_policy: unknown option $k" }
-    set opt($k) $v
-  }
-
-  set dnu_up  [_as_list DNU_FOR_UPPER]
-  set dnu_bot [_as_list DNU_FOR_BOTTOM]
-  set requested_allow_net [_requested_allow_net_class_with_default $opt(-allow_net) $opt(-quiet)]
-  set effective_allow_net [_effective_allow_net_class $requested_allow_net $opt(-quiet)]
-  _report_allow_net_resolution "tier_policy/${tier}" $requested_allow_net $effective_allow_net
-
-  if {$tier eq "upper"} {
-    # dont_use for synthesis/placement choices
-    if {$opt(-fixlib)} { 
-      _set_dont_use [_expand_libcells $dnu_up] 
-    }
-
-    set ::env(TIEHI_CELL_AND_PORT) $::env(UPPER_TIEHI_CELL_AND_PORT)
-    set ::env(TIELO_CELL_AND_PORT) $::env(UPPER_TIELO_CELL_AND_PORT)
-    if {[info exists ::env(UPPER_SITE)]} { set ::env(PLACE_SITE) $::env(UPPER_SITE) }
-
-    if {!$opt(-quiet)} {
-      puts "INFO(OR): Tier=UPPER applied."
-    }
-  } else {
-    if {$opt(-fixlib)} { 
-      _set_dont_use [_expand_libcells $dnu_bot] 
-    }
-
-    set ::env(TIEHI_CELL_AND_PORT) $::env(BOTTOM_TIEHI_CELL_AND_PORT)
-    set ::env(TIELO_CELL_AND_PORT) $::env(BOTTOM_TIELO_CELL_AND_PORT)
-    if {[info exists ::env(BOTTOM_SITE)]} { set ::env(PLACE_SITE) $::env(BOTTOM_SITE) }
-
-    if {!$opt(-quiet)} {
-      puts "INFO(OR): Tier=BOTTOM applied."
-    }
-  }
-
-  if {[info exists ::env(DONT_USE_CELLS)] && $::env(DONT_USE_CELLS) ne ""} {
-    _set_dont_use [_expand_libcells $::env(DONT_USE_CELLS)]
-    if {!$opt(-quiet)} { puts "INFO(OR): Applied DONT_USE_CELLS = '$::env(DONT_USE_CELLS)'." }
-  }
-
-  _protect_pin3d_split_buffers $opt(-quiet) $opt(-protect_split_buffers)
-  _apply_net_class_optimization_mask $effective_allow_net $opt(-quiet) $opt(-skip_clock_nets)
-  if {$opt(-rebuild_rows)} {
-    or_rebuild_rows_for_site $::env(PLACE_SITE) $tier
-  }
+# Tier classification, cross-tier/mixed-fanout reporting, and optimization masks.
+if {![llength [info commands apply_tier_policy]]} {
+  source $::env(OPENROAD_SCRIPTS_DIR)/placement_tier_metrics_policy.tcl
 }

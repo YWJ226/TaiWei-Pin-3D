@@ -28,25 +28,39 @@ source $::env(OPENROAD_SCRIPTS_DIR)/placement_utils.tcl
 set before_report [file join $LOG_DIR "place_bottom.before.nets"]
 set after_report [file join $LOG_DIR "place_bottom.after.nets"]
 set summary_report [file join $LOG_DIR "place_bottom.cross_tier.summary.rpt"]
+set mixed_before_report [file join $LOG_DIR "place_bottom.mixed_fanout.before.nets"]
+set mixed_after_report [file join $LOG_DIR "place_bottom.mixed_fanout.after.nets"]
+set mixed_summary_report [file join $LOG_DIR "place_bottom.mixed_fanout.summary.rpt"]
+set split_before_report [file join $LOG_DIR "place_bottom.split.before.rpt"]
+set split_after_report [file join $LOG_DIR "place_bottom.split.after.rpt"]
+set split_summary_report [file join $LOG_DIR "place_bottom.split.summary.rpt"]
+set attribution_report [file join $LOG_DIR "place_bottom.cross_tier.delta.rpt"]
+write_verilog [file join $RESULTS_DIR "place_bottom.before.v"]
 
 set place_density [calculate_placement_density]
 # mark_insts_by_master "*upper*" FIRM
 # puts "Marked upper instances as FIRM"
 
-apply_tier_policy bottom -fixlib 1 -allow_net bottom-only -protect_split_buffers 0
+apply_tier_policy bottom -fixlib 1 -allow_net bottom-only
 fastroute_setup
 report_cross_tier_snapshot $before_report -label "place_bottom before"
+report_mixed_fanout_snapshot $mixed_before_report -label "place_bottom before"
+report_split_structure_snapshot $split_before_report -label "place_bottom before"
 
 set global_placement_args "-routability_driven -timing_driven"
 log_cmd global_placement -density $place_density \
     -pad_left $::env(CELL_PAD_IN_SITES_GLOBAL_PLACEMENT) \
     -pad_right $::env(CELL_PAD_IN_SITES_GLOBAL_PLACEMENT) \
     {*}$global_placement_args
+pin3d_metrics_invalidate_cache
 report_cross_tier_transition $summary_report $before_report $after_report -label "place_bottom"
+report_mixed_fanout_transition $mixed_summary_report $mixed_before_report $mixed_after_report -label "place_bottom"
+report_split_structure_transition $split_summary_report $split_before_report $split_after_report -label "place_bottom"
+report_cross_tier_delta_attribution $attribution_report $before_report $after_report -label "place_bottom"
 
 # mark_insts_by_master "*upper*" PLACED
 # puts "Marked upper instances as PLACED"
-
+write_verilog [file join $RESULTS_DIR "place_bottom.after.v"]
 handoff_write_stage_outputs $stage_paths \
   -copy_sdc 1 \
   -write_image 1 \

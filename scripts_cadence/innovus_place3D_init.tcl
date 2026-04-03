@@ -30,12 +30,14 @@ set sdc $SDC_IN
 # Additional setup
 source $::env(CADENCE_SCRIPTS_DIR)/mmmc_setup.tcl
 source $::env(CADENCE_SCRIPTS_DIR)/place_common.tcl
+source $::env(CADENCE_SCRIPTS_DIR)/place_macro_util.tcl
 source $::env(CADENCE_SCRIPTS_DIR)/tier_cell_policy.tcl
 source $::env(CADENCE_SCRIPTS_DIR)/extract_report.tcl
 handoff_log_paths $stage_paths
 
 handoff_init_design_from_paths $stage_paths
 
+pmu::set_all_tier_macros_fixed
 set_tier_placement_status upper fixed
 saveNetlist [file join $RESULTS_DIR "${DESIGN}_3D.init.before.v"]
 extract_cross_tier_nets [file join $LOG_DIR "place_3d_init.before.nets"]
@@ -47,6 +49,7 @@ pc::setup_basic
 
 place_design
 
+pmu::set_all_tier_macros_fixed
 set_tier_placement_status upper placed
 extract_cross_tier_nets [file join $LOG_DIR "place_3d_init.after.nets"]
 saveNetlist [file join $RESULTS_DIR "${DESIGN}_3D.init.after.v"]

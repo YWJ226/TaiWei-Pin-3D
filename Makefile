@@ -443,14 +443,14 @@ ord-legalize-bottom:
 .PHONY: ord-cts
 ord-cts:
 	@$(call _mkstdirs)
-	@echo "[ORD] CTS"
-	$(call _run_with_tmp_log,$(LOG_DIR)/4_0_cts.log,LEF_FILES="$(LEF_FILES_CTS)" COVER_LAYER="$(COVER_LAYER)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/cts.tcl)
+	@echo "[ORD] CTS owner-tree"
+	$(call _run_with_tmp_log,$(LOG_DIR)/4_0_cts.log,LEF_FILES="$(LEF_FILES_CTS_OWNER)" COVER_LAYER="$(COVER_LAYER)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/cts.tcl)
 
 .PHONY: ord-cts-post
 ord-cts-post:
 	@$(call _mkstdirs)
-	@echo "[ORD] CTS post"
-	$(call _run_with_tmp_log,$(LOG_DIR)/4_1_cts_post.log,LEF_FILES="$(LEF_FILES_NONE_CTS)" COVER_LAYER="$(COVER_LAYER)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/cts_post.tcl)
+	@echo "[ORD] CTS receive-opt"
+	$(call _run_with_tmp_log,$(LOG_DIR)/4_1_cts_post.log,LEF_FILES="$(LEF_FILES_CTS_RECEIVE)" COVER_LAYER="$(COVER_LAYER)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/cts_post.tcl)
 
 .PHONY: ord-re-cts
 ord-re-cts:

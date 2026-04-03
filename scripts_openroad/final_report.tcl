@@ -26,7 +26,6 @@ handoff_log_paths $stage_paths
 utl::set_metrics_stage "finish__{}"
 load_design $DEF_IN $SDC_IN "Starting final report"
 source $::env(OPENROAD_SCRIPTS_DIR)/placement_utils.tcl
-apply_tier_policy [or_cts_owner_tier] -fixlib 1 -allow_net all 
 
 set_propagated_clock [all_clocks]
 puts "Starting global connection cleanup"

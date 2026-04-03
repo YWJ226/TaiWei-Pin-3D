@@ -1,6 +1,6 @@
 # ============================================================
 # cts_post.tcl
-# Run the opposite-tier OpenROAD post-CTS repair stage.
+# Run the receive-tier OpenROAD post-CTS optimization stage.
 # ============================================================
 
 # Core setup
@@ -32,17 +32,31 @@ handoff_log_paths $stage_paths
 utl::set_metrics_stage "cts__{}"
 load_design $DEF_IN $SDC_IN "Starting POST CTS..."
 source $::env(OPENROAD_SCRIPTS_DIR)/placement_utils.tcl
+source $::env(OPENROAD_SCRIPTS_DIR)/cts_stage_common.tcl
 set before_report [file join $LOG_DIR "cts_post.before.nets"]
 set after_report [file join $LOG_DIR "cts_post.after.nets"]
 set summary_report [file join $LOG_DIR "cts_post.cross_tier.summary.rpt"]
+set mixed_before_report [file join $LOG_DIR "cts_post.mixed_fanout.before.nets"]
+set mixed_after_report [file join $LOG_DIR "cts_post.mixed_fanout.after.nets"]
+set mixed_summary_report [file join $LOG_DIR "cts_post.mixed_fanout.summary.rpt"]
+set split_before_report [file join $LOG_DIR "cts_post.split.before.rpt"]
+set split_after_report [file join $LOG_DIR "cts_post.split.after.rpt"]
+set split_summary_report [file join $LOG_DIR "cts_post.split.summary.rpt"]
+set attribution_report [file join $LOG_DIR "cts_post.cross_tier.delta.rpt"]
 set clock_before_report [file join $LOG_DIR "cts_post.clock.before.nets"]
 set clock_after_report [file join $LOG_DIR "cts_post.clock.after.nets"]
 set clock_summary_report [file join $LOG_DIR "cts_post.clock.cross_tier.summary.rpt"]
 
-set fix_layer [or_cts_fix_tier]
-set allow_net_class [expr {$fix_layer eq "upper" ? "upper-only" : "bottom-only"}]
-apply_tier_policy $fix_layer -fixlib 1 -allow_net $allow_net_class -skip_clock_nets 1 -protect_split_buffers 0
+set active_tier [or_cts_receive_tier]
+set fixed_tier [or_cts_owner_tier]
+set requested_allow_net [or_cts_requested_allow_net $active_tier]
+set effective_allow_net [or_cts_effective_allow_net $active_tier]
+or_cts_report_stage_banner "receive-opt" $active_tier $fixed_tier $requested_allow_net $effective_allow_net
+or_cts_set_fixed_tier_status $fixed_tier FIRM
+apply_tier_policy $active_tier -fixlib 1 -allow_net $effective_allow_net -skip_clock_nets 1
 report_cross_tier_snapshot $before_report -label "cts_post before"
+report_mixed_fanout_snapshot $mixed_before_report -label "cts_post before"
+report_split_structure_snapshot $split_before_report -label "cts_post before"
 report_cross_tier_snapshot $clock_before_report -label "cts_post clock before" -clock_only 1
 
 utl::push_metrics_stage "cts__{}__pre_repair_timing"
@@ -57,11 +71,13 @@ log_cmd repair_clock_nets
 log_cmd detailed_placement
 estimate_parasitics -placement
 
-if {![info exists ::env(SKIP_CTS_REPAIR_TIMING)]} {
-  set ::env(SKIP_CTS_REPAIR_TIMING) 0
+set skip_cts_post_repair 0
+if {[info exists ::env(SKIP_CTS_POST_REPAIR_TIMING)]} {
+  set skip_cts_post_repair $::env(SKIP_CTS_POST_REPAIR_TIMING)
+} elseif {[info exists ::env(SKIP_CTS_REPAIR_TIMING)]} {
+  set skip_cts_post_repair $::env(SKIP_CTS_REPAIR_TIMING)
 }
-if {!$::env(SKIP_CTS_REPAIR_TIMING)} {
-  set ::env(SKIP_PIN_SWAP) 1
+if {!$skip_cts_post_repair} {
   repair_timing_helper
   set result [catch {detailed_placement} msg]
   if {$result != 0} {
@@ -70,9 +86,17 @@ if {!$::env(SKIP_CTS_REPAIR_TIMING)} {
     exit $result
   }
   check_placement -verbose
+} else {
+  puts "INFO(OR): SKIP_CTS_POST_REPAIR_TIMING=$skip_cts_post_repair, skipping post-CTS repair_timing."
 }
 
+or_cts_set_fixed_tier_status $fixed_tier PLACED
+
+pin3d_metrics_invalidate_cache
 report_cross_tier_transition $summary_report $before_report $after_report -label "cts_post"
+report_mixed_fanout_transition $mixed_summary_report $mixed_before_report $mixed_after_report -label "cts_post"
+report_split_structure_transition $split_summary_report $split_before_report $split_after_report -label "cts_post"
+report_cross_tier_delta_attribution $attribution_report $before_report $after_report -label "cts_post"
 report_cross_tier_transition $clock_summary_report $clock_before_report $clock_after_report -label "cts_post clock" -clock_only 1
 
 source $::env(OPENROAD_SCRIPTS_DIR)/report_metrics.tcl

@@ -128,11 +128,12 @@ proc rebuild_rows_for_site {site_name tier {core_margin 0}} {
   }
 }
 
-# Set placement status for tier-specific COVER cells only.
+# Set placement status for tier-specific standard-cell COVER instances only.
 # Rule:
 #   - master name matches "*_upper" or "*_bottom"
 #   - master has a valid site
 #   - master subclass contains COVER
+#   - instance is not macro-like (block/ring or site-less cover macro)
 proc set_tier_placement_status {tier status} {
   set tier [string tolower $tier]
   set status [string tolower $status]
@@ -142,16 +143,22 @@ proc set_tier_placement_status {tier status} {
 
   set pattern "*_${tier}"
   set target_insts {}
+  set skipped_macros 0
   
   foreach inst [dbGet -p2 top.insts.cell.name $pattern] {
-    if {[dbGet $inst.cell.site.name] ne "" && [regexp {cover} [dbGet $inst.cell.subClass]]} {
+    if {[pmu::is_macro_like_inst $inst]} {
+      incr skipped_macros
+      continue
+    }
+    set site_name [dbGet $inst.cell.site.name]
+    if {$site_name ne "" && $site_name ne "0x0" && [regexp {cover} [string tolower [dbGet $inst.cell.subClass]]]} {
       lappend target_insts $inst
     }
   }
   if {[llength $target_insts]} {
     dbSet $target_insts.pStatus $status
   }
-  puts "INFO: Set [llength $target_insts] ${tier}-tier COVER instances to '$status'."
+  puts "INFO: Set [llength $target_insts] ${tier}-tier std COVER instances to '$status' (skipped ${skipped_macros} macro-like instances)."
 }
 
 # ------------------------------------------------------------
