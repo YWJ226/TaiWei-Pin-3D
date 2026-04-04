@@ -21,3 +21,5 @@ $(PLATFORM_DIR)/lef_upper/asap7sc7p5t_28_R_1x_220121a.upper.cover.processed.lef
 export SC_LEF_BOTTOM_COVER ?= \
 $(PLATFORM_DIR)/lef_bottom/NangateOpenCellLibrary.macro.mod.bottom.cover.processed.lef \
 $(PLATFORM_DIR)/lef_upper/asap7sc7p5t_28_R_1x_220121a.upper.processed.lef 
+export MACRO_PLACE_HALO_UPPER ?= 1 1
+export MACRO_PLACE_HALO_BOTTOM ?= 5 5

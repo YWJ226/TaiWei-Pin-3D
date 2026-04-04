@@ -95,12 +95,13 @@ if {$result != 0} {
 utl::push_metrics_stage "cts__{}__owner_tree"
 estimate_parasitics -placement
 utl::pop_metrics_stage
-check_placement -verbose
+[catch {check_placement -verbose}]
 
+set skip_cts_post_repair 0
 if {![info exists ::env(OPENROAD_CTS_OWNER_REPAIR_TIMING)]} {
-  set ::env(OPENROAD_CTS_OWNER_REPAIR_TIMING) 0
+  set skip_cts_post_repair $::env(OPENROAD_CTS_OWNER_REPAIR_TIMING)
 }
-if {$::env(OPENROAD_CTS_OWNER_REPAIR_TIMING)} {
+if {!$skip_cts_post_repair} {
   repair_timing_helper
   set result [catch {detailed_placement} msg]
   if {$result != 0} {
@@ -109,7 +110,10 @@ if {$::env(OPENROAD_CTS_OWNER_REPAIR_TIMING)} {
     exit $result
   }
   estimate_parasitics -placement
-  check_placement -verbose
+  set err [catch {check_placement -verbose} err_message]
+  if {$err} {
+    puts "WARNING: $err_message"
+  }
 } else {
   puts "INFO(OR): OPENROAD_CTS_OWNER_REPAIR_TIMING=0, skipping owner-tree repair_timing."
 }

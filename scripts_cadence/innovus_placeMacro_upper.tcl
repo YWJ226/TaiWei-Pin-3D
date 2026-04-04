@@ -36,7 +36,7 @@ handoff_log_paths $stage_paths
 handoff_init_design_from_paths $stage_paths
 
 apply_tier_policy upper -fixlib 1
-lassign [pmu::_get_halos] halo_x halo_y
+lassign [pmu::_get_halos upper] halo_x halo_y
 catch { pmu::run_tier_macro_place upper $halo_x $halo_y }
 
 handoff_write_stage_outputs $stage_paths \

@@ -21,3 +21,5 @@ $(PLATFORM_DIR)/lef_upper/NangateOpenCellLibrary.macro.mod.upper.cover.lef
 export SC_LEF_BOTTOM_COVER ?= \
 $(PLATFORM_DIR)/lef_bottom/NangateOpenCellLibrary.macro.mod.bottom.cover.lef \
 $(PLATFORM_DIR)/lef_upper/NangateOpenCellLibrary.macro.mod.upper.lef 
+export MACRO_PLACE_HALO_UPPER ?= 5 5
+export MACRO_PLACE_HALO_BOTTOM ?= 5 5

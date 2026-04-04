@@ -33,11 +33,38 @@ proc pmu::is_macro_like_inst {inst_ptr} {
   return 0
 }
 
-proc pmu::_get_halos {} {
-  if {![info exists ::env(MACRO_PLACE_HALO)] || $::env(MACRO_PLACE_HALO) eq ""} {
+proc pmu::_get_halos {{tier ""}} {
+  set normalized_tier [string tolower [string trim $tier]]
+  switch -- $normalized_tier {
+    upper { set tier_var MACRO_PLACE_HALO_UPPER }
+    bottom { set tier_var MACRO_PLACE_HALO_BOTTOM }
+    default { set tier_var "" }
+  }
+
+  if {$tier_var ne "" && [info exists ::env($tier_var)] && $::env($tier_var) ne ""} {
+    set values $::env($tier_var)
+  } elseif {[info exists ::env(MACRO_PLACE_HALO)] && $::env(MACRO_PLACE_HALO) ne ""} {
+    set values $::env(MACRO_PLACE_HALO)
+  } else {
     return [list 0 0]
   }
-  lassign $::env(MACRO_PLACE_HALO) halo_x halo_y
+
+  switch -- [llength $values] {
+    1 {
+      set halo_x [lindex $values 0]
+      set halo_y $halo_x
+    }
+    2 {
+      lassign $values halo_x halo_y
+    }
+    default {
+      if {$tier_var ne "" && [info exists ::env($tier_var)] && $::env($tier_var) ne ""} {
+        error "pmu::_get_halos: $tier_var must have 1 or 2 values, got '$::env($tier_var)'"
+      }
+      error "pmu::_get_halos: MACRO_PLACE_HALO must have 1 or 2 values, got '$::env(MACRO_PLACE_HALO)'"
+    }
+  }
+
   return [list $halo_x $halo_y]
 }
 
@@ -91,6 +118,7 @@ proc pmu::set_all_tier_macros_fixed {} {
 }
 
 proc pmu::run_tier_macro_place {tier halo_x halo_y} {
+  puts "INFO(PMU): run_tier_macro_place tier=$tier halo_x=$halo_x halo_y=$halo_y"
   addHaloToBlock -allMacro $halo_x $halo_y $halo_x $halo_y
   place_design -concurrent_macros
   refine_macro_place

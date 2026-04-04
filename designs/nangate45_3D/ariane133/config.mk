@@ -25,5 +25,7 @@ export DETAILED_ROUTE_END_ITERATION = 15
 export GLOBAL_ROUTE_ARGS = -verbose -congestion_iterations 30
 
 export MACRO_PLACE_HALO = 5 5
+export MACRO_PLACE_HALO_UPPER = 5 5
+export MACRO_PLACE_HALO_BOTTOM = 5 5
 
 export NUM_CORES   ?= 32

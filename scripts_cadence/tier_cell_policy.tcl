@@ -122,7 +122,8 @@ proc rebuild_rows_for_site {site_name tier {core_margin 0}} {
   deleteRow -all
   createRow -site $site_name -area [list $new_x1 $new_y1 $new_x2 $new_y2]
   deleteHaloFromBlock -allBlock
-  lassign [pmu::_get_halos] halo_x halo_y
+  lassign [pmu::_get_halos $tier] halo_x halo_y
+  puts "INFO(INV): Reapply macro halo for tier '$tier' halo_x=$halo_x halo_y=$halo_y"
   foreach cell [pmu::get_tier_macro_cells $tier] {
     addHaloToBlock -cell $cell $halo_x $halo_y $halo_x $halo_y 
   }

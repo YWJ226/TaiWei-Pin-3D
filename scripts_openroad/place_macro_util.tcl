@@ -10,8 +10,17 @@ if { [find_macros] != "" } {
     set ::env(RTLMP_RPT_DIR) "$::env(OBJECTS_DIR)/rtlmp"
   }
 
-  lassign $::env(MACRO_PLACE_HALO) halo_x halo_y
+  set macro_tier "upper"
+  if {[info exists stage_name]} {
+    if {$stage_name eq "macro-bottom"} {
+      set macro_tier "bottom"
+    } elseif {$stage_name eq "macro-upper"} {
+      set macro_tier "upper"
+    }
+  }
+  lassign [pin3d_macro_place_halo_for_tier $macro_tier] halo_x halo_y
   set halo_max [expr max($halo_x, $halo_y)]
+  puts "INFO(OR): rtl_macro_placer tier=$macro_tier halo_x=$halo_x halo_y=$halo_y"
 
   set additional_rtlmp_args ""
   append_env_var additional_rtlmp_args RTLMP_MAX_LEVEL -max_num_level 1

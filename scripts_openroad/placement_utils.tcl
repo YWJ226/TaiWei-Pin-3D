@@ -307,6 +307,49 @@ proc or_find_site_by_name_in_db {site_name} {
   error "ERROR: cannot resolve site '$site_name' via odb::dbLib_findSite in any dbLib."
 }
 
+proc pin3d_macro_place_halo_for_tier {tier} {
+  set normalized_tier [string tolower [string trim $tier]]
+  switch -- $normalized_tier {
+    upper { set tier_var MACRO_PLACE_HALO_UPPER }
+    bottom { set tier_var MACRO_PLACE_HALO_BOTTOM }
+    default { set tier_var "" }
+  }
+
+  if {$tier_var ne "" && [info exists ::env($tier_var)] && $::env($tier_var) ne ""} {
+    set values $::env($tier_var)
+  } elseif {[info exists ::env(MACRO_PLACE_HALO)] && $::env(MACRO_PLACE_HALO) ne ""} {
+    set values $::env(MACRO_PLACE_HALO)
+  } else {
+    return [list 0.0 0.0]
+  }
+
+  switch -- [llength $values] {
+    1 {
+      set halo_x [expr {double([lindex $values 0])}]
+      set halo_y $halo_x
+    }
+    2 {
+      set halo_x [expr {double([lindex $values 0])}]
+      set halo_y [expr {double([lindex $values 1])}]
+    }
+    default {
+      if {$tier_var ne "" && [info exists ::env($tier_var)] && $::env($tier_var) ne ""} {
+        error "ERROR: $tier_var must have 1 or 2 values, got '$::env($tier_var)'"
+      }
+      error "ERROR: MACRO_PLACE_HALO must have 1 or 2 values, got '$::env(MACRO_PLACE_HALO)'"
+    }
+  }
+
+  if {$halo_x < 0.0 || $halo_y < 0.0} {
+    if {$tier_var ne "" && [info exists ::env($tier_var)] && $::env($tier_var) ne ""} {
+      error "ERROR: $tier_var must be >= 0, got '$::env($tier_var)'"
+    }
+    error "ERROR: MACRO_PLACE_HALO must be >= 0, got '$::env(MACRO_PLACE_HALO)'"
+  }
+
+  return [list $halo_x $halo_y]
+}
+
 proc or_rebuild_rows_for_site {new_site tier} {
   # die area (microns): {lx ly ux uy}
   lassign [ord::get_die_area] die_lx die_ly die_ux die_uy
@@ -336,7 +379,7 @@ proc or_rebuild_rows_for_site {new_site tier} {
     error "ERROR: invalid site '$new_site' (w=[$site getWidth] h=[$site getHeight])"
   }
   if { [find_macros] != "" } {
-    lassign $::env(MACRO_PLACE_HALO) halo_x halo_y
+    lassign [pin3d_macro_place_halo_for_tier $tier] halo_x halo_y
     set halo_max [expr max($halo_x, $halo_y)]
     set blockage_width $halo_max
     if {[info exists ::env(PIN3D_REBUILD_ROW_BLOCKAGE_HALO)] && $::env(PIN3D_REBUILD_ROW_BLOCKAGE_HALO) ne ""} {

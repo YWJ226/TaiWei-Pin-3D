@@ -13,6 +13,42 @@ array unset ::pin3d_metric_report_cache
 array set ::pin3d_metric_report_cache {}
 array unset ::pin3d_clock_net_name_cache
 array set ::pin3d_clock_net_name_cache {}
+array unset ::pin3d_clock_propagation_graph_cache
+array set ::pin3d_clock_propagation_graph_cache {}
+
+proc _pin3d_metric_report_mode {} {
+  if {[info exists ::env(PIN3D_SKIP_HEAVY_METRIC_REPORTS)]} {
+    set skip_flag $::env(PIN3D_SKIP_HEAVY_METRIC_REPORTS)
+    if {$skip_flag ni {0 false FALSE off OFF no NO ""}} {
+      return "off"
+    }
+  }
+
+  set mode "off"
+  if {[info exists ::env(PIN3D_METRIC_REPORT_MODE)] && $::env(PIN3D_METRIC_REPORT_MODE) ne ""} {
+    set mode [string tolower $::env(PIN3D_METRIC_REPORT_MODE)]
+  }
+
+  switch -- $mode {
+    full -
+    detail {
+      return "full"
+    }
+    summary -
+    stats -
+    fast {
+      return "summary"
+    }
+    off -
+    none -
+    skip {
+      return "off"
+    }
+    default {
+      return "full"
+    }
+  }
+}
 
 proc pin3d_metrics_invalidate_cache {} {
   if {![info exists ::pin3d_metric_snapshot_epoch]} {
@@ -396,6 +432,29 @@ proc _build_tier_metric_snapshot {args} {
     return $::pin3d_metric_snapshot_cache($cache_key)
   }
 
+  set report_mode [_pin3d_metric_report_mode]
+  if {$report_mode eq "off"} {
+    set empty_snapshot [dict create \
+      mode $report_mode \
+      clock_only $opt(-clock_only) \
+      cross_entries [dict create] \
+      mixed_entries [dict create] \
+      cross_stats [dict create \
+        cross_tier_all 0 \
+        upper_bottom 0 \
+        upper_io 0 \
+        bottom_io 0 \
+        upper_bottom_io 0 \
+        unknown 0] \
+      mixed_stats [dict create \
+        mixed_fanout_all 0 \
+        upper_bottom 0 \
+        upper_bottom_io 0 \
+        unknown 0]]
+    set ::pin3d_metric_snapshot_cache($cache_key) $empty_snapshot
+    return $empty_snapshot
+  }
+
   set cross_total 0
   array set cross_counts {
     Upper_Bottom    0
@@ -414,6 +473,7 @@ proc _build_tier_metric_snapshot {args} {
 
   set cross_entries [dict create]
   set mixed_entries [dict create]
+  set collect_entries [expr {$report_mode eq "full"}]
   array set clock_net_lookup {}
   if {$opt(-clock_only)} {
     foreach clock_net_name [_clock_net_name_set $opt(-sdc_path)] {
@@ -443,7 +503,9 @@ proc _build_tier_metric_snapshot {args} {
         incr cross_total
       }
       incr cross_counts($cross_type)
-      dict set cross_entries $net_name $cross_type
+      if {$collect_entries} {
+        dict set cross_entries $net_name $cross_type
+      }
     }
 
     lassign [tier_net_mixed_fanout_detail_counts $net] upper_count bottom_count io_count unknown_count
@@ -457,11 +519,14 @@ proc _build_tier_metric_snapshot {args} {
         incr mixed_total
       }
       incr mixed_counts($mixed_type)
-      dict set mixed_entries $net_name $mixed_type
+      if {$collect_entries} {
+        dict set mixed_entries $net_name $mixed_type
+      }
     }
   }
 
   set snapshot [dict create \
+    mode $report_mode \
     clock_only $opt(-clock_only) \
     cross_entries $cross_entries \
     mixed_entries $mixed_entries \
@@ -482,13 +547,22 @@ proc _build_tier_metric_snapshot {args} {
 }
 
 proc _cross_tier_report_lines_from_snapshot {snapshot} {
+  set mode [dict get $snapshot mode]
   set stats [dict get $snapshot cross_stats]
   set entries [dict get $snapshot cross_entries]
   set report_lines [list "# Cross-Tier Net Report"]
-  lappend report_lines [format "%-40s | %s" "Net Name" "Type"]
-  lappend report_lines "-----------------------------------------|------------------"
-  foreach net_name [lsort [dict keys $entries]] {
-    lappend report_lines [format "%-40s | %s" $net_name [dict get $entries $net_name]]
+  if {$mode eq "full"} {
+    lappend report_lines [format "%-40s | %s" "Net Name" "Type"]
+    lappend report_lines "-----------------------------------------|------------------"
+    foreach net_name [lsort [dict keys $entries]] {
+      lappend report_lines [format "%-40s | %s" $net_name [dict get $entries $net_name]]
+    }
+  } elseif {$mode eq "summary"} {
+    lappend report_lines "# detail_omitted 1"
+    lappend report_lines "# report_mode summary"
+  } else {
+    lappend report_lines "# detail_omitted 1"
+    lappend report_lines "# report_mode off"
   }
   lappend report_lines ""
   lappend report_lines [format "Total Cross-Tier Nets: %d" [dict get $stats cross_tier_all]]
@@ -512,13 +586,22 @@ proc _cross_tier_report_lines_from_snapshot {snapshot} {
 }
 
 proc _mixed_fanout_report_lines_from_snapshot {snapshot} {
+  set mode [dict get $snapshot mode]
   set stats [dict get $snapshot mixed_stats]
   set entries [dict get $snapshot mixed_entries]
   set report_lines [list "# Mixed-Fanout Net Report"]
-  lappend report_lines [format "%-40s | %s" "Net Name" "Type"]
-  lappend report_lines "-----------------------------------------|------------------"
-  foreach net_name [lsort [dict keys $entries]] {
-    lappend report_lines [format "%-40s | %s" $net_name [dict get $entries $net_name]]
+  if {$mode eq "full"} {
+    lappend report_lines [format "%-40s | %s" "Net Name" "Type"]
+    lappend report_lines "-----------------------------------------|------------------"
+    foreach net_name [lsort [dict keys $entries]] {
+      lappend report_lines [format "%-40s | %s" $net_name [dict get $entries $net_name]]
+    }
+  } elseif {$mode eq "summary"} {
+    lappend report_lines "# detail_omitted 1"
+    lappend report_lines "# report_mode summary"
+  } else {
+    lappend report_lines "# detail_omitted 1"
+    lappend report_lines "# report_mode off"
   }
   lappend report_lines ""
   lappend report_lines [format "Total Mixed-Fanout Nets: %d" [dict get $stats mixed_fanout_all]]
@@ -725,7 +808,7 @@ proc report_cross_tier_snapshot {report_path args} {
     if {$label eq ""} {
       set label [file tail $report_path]
     }
-    puts "INFO(OR): cross-tier snapshot $label [_cross_tier_stats_brief $stats]"
+    puts "INFO(OR): cross-tier snapshot $label mode=[_pin3d_metric_report_mode] [_cross_tier_stats_brief $stats]"
   }
   return $stats
 }
@@ -752,7 +835,7 @@ proc report_mixed_fanout_snapshot {report_path args} {
     if {$label eq ""} {
       set label [file tail $report_path]
     }
-    puts "INFO(OR): mixed-fanout snapshot $label [_mixed_fanout_stats_brief $stats]"
+    puts "INFO(OR): mixed-fanout snapshot $label mode=[_pin3d_metric_report_mode] [_mixed_fanout_stats_brief $stats]"
   }
   return $stats
 }
@@ -1062,22 +1145,45 @@ proc _set_net_dont_touch_flag {net_name flag quiet} {
     return 0
   }
 
-  if {$flag} {
-    if {[catch {set_dont_touch $net_obj} err]} {
-      if {!$quiet} {
+  if {[catch {rsz::set_dont_touch_net $net_obj $flag} err]} {
+    if {!$quiet} {
+      if {$flag} {
         puts "WARN(OR): failed to lock net $net_name : $err"
-      }
-      return 0
-    }
-  } else {
-    if {[catch {unset_dont_touch $net_obj} err]} {
-      if {!$quiet} {
+      } else {
         puts "WARN(OR): failed to unlock net $net_name : $err"
       }
-      return 0
     }
+    return 0
   }
   return 1
+}
+
+proc _pin3d_elapsed_ms {start_ms} {
+  return [expr {[clock milliseconds] - $start_ms}]
+}
+
+proc _set_net_dont_touch_flag_batch {net_names flag quiet} {
+  set total [llength $net_names]
+  if {$total == 0} {
+    return 0
+  }
+
+  set failures 0
+  set chunk_size 256
+  for {set idx 0} {$idx < $total} {incr idx $chunk_size} {
+    set chunk [lrange $net_names $idx [expr {$idx + $chunk_size - 1}]]
+    if {[llength $chunk] == 0} {
+      continue
+    }
+
+    foreach net_name $chunk {
+      if {![_set_net_dont_touch_flag $net_name $flag 1]} {
+        incr failures
+      }
+    }
+  }
+
+  return $failures
 }
 
 proc _clock_port_name_candidates {{sdc_path ""}} {
@@ -1144,6 +1250,13 @@ proc _collect_db_clock_net_names {} {
   return [array names clock_names]
 }
 
+proc _pin3d_clock_propagation_graph_cache_key {} {
+  if {![info exists ::pin3d_metric_snapshot_epoch]} {
+    set ::pin3d_metric_snapshot_epoch 0
+  }
+  return $::pin3d_metric_snapshot_epoch
+}
+
 proc _pin3d_is_seq_like_master_name {master_name} {
   return [expr {[regexp -nocase -- {(^|_)(async_dff|dff|sdff|dlh|dll|tlat|sdf|latch|sdlatch)} $master_name]}]
 }
@@ -1187,90 +1300,93 @@ proc _pin3d_is_clock_propagation_inst {inst} {
   return 1
 }
 
-proc _expand_clock_nets_via_split_buffers {seed_clock_names} {
-  array set known {}
-  foreach net_name $seed_clock_names {
-    if {$net_name ne ""} {
-      set known($net_name) 1
-    }
+proc _pin3d_clock_propagation_graph {} {
+  set cache_key [_pin3d_clock_propagation_graph_cache_key]
+  if {[info exists ::pin3d_clock_propagation_graph_cache($cache_key)]} {
+    return $::pin3d_clock_propagation_graph_cache($cache_key)
   }
 
-  set changed 1
-  while {$changed} {
-    set changed 0
-    foreach inst [_pin3d_split_buffer_db_insts] {
-      set connected_clock 0
-      set connected_nets {}
-      foreach iterm [$inst getITerms] {
-        set net [$iterm getNet]
-        if {$net eq "" || $net eq "NULL"} {
-          continue
-        }
-        set net_name [$net getName]
-        lappend connected_nets $net_name
-        if {[info exists known($net_name)]} {
-          set connected_clock 1
-        }
-      }
-      if {!$connected_clock} {
+  set graph [dict create]
+  set block [ord::get_db_block]
+  foreach inst [$block getInsts] {
+    if {![_pin3d_is_clock_propagation_inst $inst]} {
+      continue
+    }
+
+    set input_net_names {}
+    set output_net_names {}
+    foreach iterm [$inst getITerms] {
+      set mterm [$iterm getMTerm]
+      set sig_type [_pin3d_safe_sigtype_from_mterm $mterm]
+      if {$sig_type eq "POWER" || $sig_type eq "GROUND"} {
         continue
       }
-      foreach net_name $connected_nets {
-        if {![info exists known($net_name)]} {
-          set known($net_name) 1
-          set changed 1
-        }
-      }
-    }
-  }
-
-  return [array names known]
-}
-
-proc _expand_clock_nets_via_propagation_insts {seed_clock_names} {
-  array set known {}
-  foreach net_name $seed_clock_names {
-    if {$net_name ne ""} {
-      set known($net_name) 1
-    }
-  }
-
-  set changed 1
-  while {$changed} {
-    set changed 0
-    foreach net_name [array names known] {
-      set net [_pin3d_find_net_by_name $net_name]
+      set net [_pin3d_iterm_net $iterm]
       if {$net eq "" || $net eq "NULL"} {
         continue
       }
-      foreach iterm [$net getITerms] {
-        set mterm [$iterm getMTerm]
-        set sig_type [_pin3d_safe_sigtype_from_mterm $mterm]
-        if {$sig_type eq "POWER" || $sig_type eq "GROUND"} {
-          continue
+      set net_name [$net getName]
+      if {$net_name eq ""} {
+        continue
+      }
+      switch -- [_pin3d_safe_iotype_from_mterm $mterm] {
+        INPUT {
+          lappend input_net_names $net_name
         }
-        if {[_pin3d_safe_iotype_from_mterm $mterm] ne "INPUT"} {
-          continue
-        }
-
-        set inst [$iterm getInst]
-        if {![_pin3d_is_clock_propagation_inst $inst]} {
-          continue
-        }
-
-        foreach out_iterm [_pin3d_inst_signal_output_iterms $inst] {
-          set out_net [_pin3d_iterm_net $out_iterm]
-          if {$out_net eq "" || $out_net eq "NULL"} {
-            continue
-          }
-          set out_net_name [$out_net getName]
-          if {$out_net_name eq "" || [info exists known($out_net_name)]} {
-            continue
-          }
-          set known($out_net_name) 1
-          set changed 1
+        OUTPUT {
+          lappend output_net_names $net_name
         }
       }
+    }
+
+    if {[llength $input_net_names] == 0 || [llength $output_net_names] == 0} {
+      continue
+    }
+
+    set input_net_names [lsort -unique $input_net_names]
+    set output_net_names [lsort -unique $output_net_names]
+    foreach input_net_name $input_net_names {
+      foreach output_net_name $output_net_names {
+        if {$input_net_name eq $output_net_name} {
+          continue
+        }
+        dict lappend graph $input_net_name $output_net_name
+      }
+    }
+  }
+
+  foreach input_net_name [dict keys $graph] {
+    dict set graph $input_net_name [lsort -unique [dict get $graph $input_net_name]]
+  }
+
+  set ::pin3d_clock_propagation_graph_cache($cache_key) $graph
+  return $graph
+}
+
+proc _expand_clock_nets_via_propagation_graph {seed_clock_names} {
+  array set known {}
+  set queue {}
+  foreach net_name $seed_clock_names {
+    if {$net_name eq "" || [info exists known($net_name)]} {
+      continue
+    }
+    set known($net_name) 1
+    lappend queue $net_name
+  }
+
+  set graph [_pin3d_clock_propagation_graph]
+  while {[llength $queue] > 0} {
+    set net_name [lindex $queue 0]
+    set queue [lrange $queue 1 end]
+    if {![dict exists $graph $net_name]} {
+      continue
+    }
+    foreach out_net_name [dict get $graph $net_name] {
+      if {$out_net_name eq "" || [info exists known($out_net_name)]} {
+        continue
+      }
+      set known($out_net_name) 1
+      lappend queue $out_net_name
     }
   }
 
@@ -1334,8 +1450,7 @@ proc _clock_net_name_set {{sdc_path ""}} {
       }
     }
   }
-  set clock_net_names [_expand_clock_nets_via_propagation_insts \
-    [_expand_clock_nets_via_split_buffers [array names clock_names]]]
+  set clock_net_names [_expand_clock_nets_via_propagation_graph [array names clock_names]]
   set ::pin3d_clock_net_name_cache($cache_key) $clock_net_names
   return $clock_net_names
 }
@@ -1354,6 +1469,8 @@ proc _apply_net_class_optimization_mask {active_class quiet {skip_clock_nets 0}}
   set ignore_cnt 0
   set fail_cnt 0
   set clock_skip_cnt 0
+  set unlock_net_names {}
+  set lock_net_names {}
 
   array set clock_net_lookup {}
   if {$skip_clock_nets} {
@@ -1369,26 +1486,24 @@ proc _apply_net_class_optimization_mask {active_class quiet {skip_clock_nets 0}}
       continue
     }
 
+    set net_name [$net getName]
+    if {$skip_clock_nets && [info exists clock_net_lookup($net_name)]} {
+      lappend unlock_net_names $net_name
+      incr clock_skip_cnt
+      continue
+    }
+
     set klass [_net_optimization_class $net]
     if {$klass eq "ignore"} {
       incr ignore_cnt
       continue
     }
-
-    set net_name [$net getName]
-    if {$skip_clock_nets && [info exists clock_net_lookup($net_name)]} {
-      if {![_set_net_dont_touch_flag $net_name 0 $quiet]} {
-        incr fail_cnt
-      } else {
-        incr clock_skip_cnt
-      }
-      continue
-    }
     set unlock_net [_net_class_is_unlocked $active_class $klass]
     set lock_net [expr {!$unlock_net}]
-    if {![_set_net_dont_touch_flag $net_name $lock_net $quiet]} {
-      incr fail_cnt
-      continue
+    if {$lock_net} {
+      lappend lock_net_names $net_name
+    } else {
+      lappend unlock_net_names $net_name
     }
 
     if {$lock_net} {
@@ -1397,6 +1512,9 @@ proc _apply_net_class_optimization_mask {active_class quiet {skip_clock_nets 0}}
       incr stats(${klass}_unlocked)
     }
   }
+
+  incr fail_cnt [_set_net_dont_touch_flag_batch $unlock_net_names 0 $quiet]
+  incr fail_cnt [_set_net_dont_touch_flag_batch $lock_net_names 1 $quiet]
 
   if {!$quiet} {
     puts "INFO(OR): Applied staged net-class mask for active_class=$active_class"
@@ -1440,6 +1558,8 @@ proc apply_tier_policy {tier args} {
   set requested_allow_net [_requested_allow_net_class_with_default $opt(-allow_net) $opt(-quiet)]
   set effective_allow_net [_effective_allow_net_class $requested_allow_net $opt(-quiet)]
   _report_allow_net_resolution "tier_policy/${tier}" $requested_allow_net $effective_allow_net
+  set total_start_ms [clock milliseconds]
+  set fixlib_start_ms $total_start_ms
 
   if {$tier eq "upper"} {
     # dont_use for synthesis/placement choices
@@ -1472,10 +1592,19 @@ proc apply_tier_policy {tier args} {
     _set_dont_use [_expand_libcells $::env(DONT_USE_CELLS)]
     if {!$opt(-quiet)} { puts "INFO(OR): Applied DONT_USE_CELLS = '$::env(DONT_USE_CELLS)'." }
   }
+  set fixlib_elapsed_ms [_pin3d_elapsed_ms $fixlib_start_ms]
 
   # _protect_pin3d_split_buffers $opt(-quiet) $opt(-protect_split_buffers)
+  set netmask_start_ms [clock milliseconds]
   _apply_net_class_optimization_mask $effective_allow_net $opt(-quiet) $opt(-skip_clock_nets)
+  set netmask_elapsed_ms [_pin3d_elapsed_ms $netmask_start_ms]
+  set rebuild_elapsed_ms 0
   if {$opt(-rebuild_rows)} {
+    set rebuild_start_ms [clock milliseconds]
     or_rebuild_rows_for_site $::env(PLACE_SITE) $tier
+    set rebuild_elapsed_ms [_pin3d_elapsed_ms $rebuild_start_ms]
+  }
+  if {!$opt(-quiet)} {
+    puts "INFO(OR): apply_tier_policy/$tier timing fixlib_ms=$fixlib_elapsed_ms netmask_ms=$netmask_elapsed_ms rebuild_rows_ms=$rebuild_elapsed_ms total_ms=[_pin3d_elapsed_ms $total_start_ms]"
   }
 }

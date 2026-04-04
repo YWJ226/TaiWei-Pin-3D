@@ -21,6 +21,40 @@ proc _open_any {path} {
 
 proc _ensure_dir {d} { if {![file exists $d]} { file mkdir $d } }
 
+proc _pin3d_metric_report_mode {} {
+  if {[info exists ::env(PIN3D_SKIP_HEAVY_METRIC_REPORTS)]} {
+    set skip_flag $::env(PIN3D_SKIP_HEAVY_METRIC_REPORTS)
+    if {$skip_flag ni {0 false FALSE off OFF no NO ""}} {
+      return "off"
+    }
+  }
+
+  set mode "off"
+  if {[info exists ::env(PIN3D_METRIC_REPORT_MODE)] && $::env(PIN3D_METRIC_REPORT_MODE) ne ""} {
+    set mode [string tolower $::env(PIN3D_METRIC_REPORT_MODE)]
+  }
+
+  switch -- $mode {
+    full -
+    detail {
+      return "full"
+    }
+    summary -
+    stats -
+    fast {
+      return "summary"
+    }
+    off -
+    none -
+    skip {
+      return "off"
+    }
+    default {
+      return "off"
+    }
+  }
+}
+
 # --------------------------
 # Timing / Power / Area / WL
 # --------------------------
@@ -122,6 +156,32 @@ proc _report_clock_names {} {
   return {}
 }
 
+proc _report_build_clock_name_lookup {} {
+  global extract_report_clock_name_lookup_ready
+  global extract_report_clock_name_lookup_cache
+
+  if {[info exists extract_report_clock_name_lookup_ready] && $extract_report_clock_name_lookup_ready} {
+    return
+  }
+
+  catch {array unset extract_report_clock_name_lookup_cache}
+  foreach clock_name [_report_clock_names] {
+    if {$clock_name ne ""} {
+      set extract_report_clock_name_lookup_cache($clock_name) 1
+    }
+  }
+  set extract_report_clock_name_lookup_ready 1
+}
+
+proc _report_is_clock_name {name} {
+  global extract_report_clock_name_lookup_cache
+  if {$name eq ""} {
+    return 0
+  }
+  _report_build_clock_name_lookup
+  return [info exists extract_report_clock_name_lookup_cache($name)]
+}
+
 proc _report_is_clock_pin_name {pin_name} {
   set short_name $pin_name
   if {[string first "/" $pin_name] >= 0} {
@@ -147,12 +207,8 @@ proc _report_is_clock_inst_term {inst_term} {
 
 proc _report_is_clock_net_ptr {net_ptr} {
   set net_name [dbGet $net_ptr.name]
-  if {$net_name ne ""} {
-    foreach clock_name [_report_clock_names] {
-      if {$clock_name eq $net_name} {
-        return 1
-      }
-    }
+  if {[_report_is_clock_name $net_name]} {
+    return 1
   }
 
   foreach inst_term [dbGet -e $net_ptr.instTerms] {
@@ -163,13 +219,8 @@ proc _report_is_clock_net_ptr {net_ptr} {
 
   foreach term [dbGet -e $net_ptr.terms] {
     set term_name [dbGet $term.name]
-    if {$term_name eq ""} {
-      continue
-    }
-    foreach clock_name [_report_clock_names] {
-      if {$clock_name eq $term_name} {
-        return 1
-      }
+    if {[_report_is_clock_name $term_name]} {
+      return 1
     }
   }
 
@@ -201,6 +252,34 @@ proc extract_cross_tier_net_stats {list_rpt_path args} {
     set opt($k) $v
   }
 
+  set report_mode [_pin3d_metric_report_mode]
+  if {$report_mode eq "off"} {
+    if {$list_rpt_path ne ""} {
+      set fh [open $list_rpt_path w]
+      if {$opt(-clock_only)} {
+        puts $fh "# Clock-Only Cross-Tier Net Report"
+      } else {
+        puts $fh "# Cross-Tier Net Report"
+      }
+      puts $fh "# detail_omitted 1"
+      puts $fh "# report_mode off"
+      puts $fh ""
+      puts $fh "Total Cross-Tier Nets: 0"
+      puts $fh "Category Totals:"
+      foreach key {Upper_Bottom Upper_IO Bottom_IO Upper_Bottom_IO Unknown_Tier} {
+        puts $fh [format "  %-18s %d" $key 0]
+      }
+      close $fh
+    }
+    return [dict create \
+      cross_tier_all 0 \
+      upper_bottom 0 \
+      upper_io 0 \
+      bottom_io 0 \
+      upper_bottom_io 0 \
+      unknown 0]
+  }
+
   set total_cross_tier 0
   array set category_counts {
     Upper_Bottom    0
@@ -216,8 +295,13 @@ proc extract_cross_tier_net_stats {list_rpt_path args} {
   } else {
     lappend report_lines "# Cross-Tier Net Report"
   }
-  lappend report_lines [format "%-40s | %s" "Net Name" "Type"]
-  lappend report_lines "-----------------------------------------|------------------"
+  if {$report_mode eq "full"} {
+    lappend report_lines [format "%-40s | %s" "Net Name" "Type"]
+    lappend report_lines "-----------------------------------------|------------------"
+  } else {
+    lappend report_lines "# detail_omitted 1"
+    lappend report_lines "# report_mode summary"
+  }
 
   foreach net [dbGet top.nets] {
     if {$opt(-clock_only) && ![_report_is_clock_net_ptr $net]} {
@@ -232,7 +316,9 @@ proc extract_cross_tier_net_stats {list_rpt_path args} {
         incr total_cross_tier
       }
       incr category_counts($net_type)
-      lappend report_lines [format "%-40s | %s" [dbGet $net.name] $net_type]
+      if {$report_mode eq "full"} {
+        lappend report_lines [format "%-40s | %s" [dbGet $net.name] $net_type]
+      }
     }
   }
 

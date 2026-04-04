@@ -16,11 +16,11 @@ export NUM_CORES="${NUM_CORES:-16}"
 source "${FLOW_ROOT}/env.sh"
 
 export DESIGN_DIMENSION="3D"
-export DESIGN_NICKNAME="ibex"
+export DESIGN_NICKNAME="gcd"
 export USE_FLOW="cadence"
-export FLOW_VARIANT="${FLOW_VARIANT:-cadence}"
+export FLOW_VARIANT="${FLOW_VARIANT:-example}"
 
-ENABLEMENT="asap7_nangate45_3D"
+ENABLEMENT="nangate45_3D"
 DESIGN_CONFIG_3D="designs/${ENABLEMENT}/${DESIGN_NICKNAME}/config.mk"
 DESIGN_CONFIG_2D="designs/${ENABLEMENT}/${DESIGN_NICKNAME}/config2d.mk"
 
