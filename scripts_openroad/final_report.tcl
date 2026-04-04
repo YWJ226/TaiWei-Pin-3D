@@ -77,7 +77,15 @@ _or_capture_cmd_to_file $wire_report {report_wire_length -detailed_route -summar
 _write_openroad_final_summary $SUMMARY_OUT $finish_report $wire_report $final_cross_tier_stats
 puts "Final summary written to $SUMMARY_OUT"
 
-source $::env(OPENROAD_SCRIPTS_DIR)/save_images.tcl
+set display_ok [expr {[info exists ::env(DISPLAY)] && $::env(DISPLAY) ne ""}]
+if {$display_ok} {
+  if {[catch {source $::env(OPENROAD_SCRIPTS_DIR)/save_images.tcl} err]} {
+    puts "WARN(OR): failed to write image : $err"
+  }
+} else {
+  puts "INFO(OR): skip image output $img_out in headless mode"
+}
+
 set VISUALIZE_FINAL [_get VISUALIZE_FINAL "0"]
 if {$VISUALIZE_FINAL eq "1"} {
   puts "gui::pause"
