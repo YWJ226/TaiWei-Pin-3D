@@ -4,6 +4,7 @@
 ############################################################
 
 puts "INFO: Start hetero bottom PDN..."
+source $::env(OPENROAD_SCRIPTS_DIR)/pdn_macro_utils.tcl
 
 proc get_row_height_um {{fallback 1.4}} {
   if {[catch {set block [ord::get_db_block]}]} { return $fallback }
@@ -76,6 +77,7 @@ add_global_connection -net {BOT_VDD} -inst_pattern {.*_bottom} -pin_pattern {^VD
 add_global_connection -net {BOT_VDD} -inst_pattern {.*_bottom} -pin_pattern {^VDDCE$}
 add_global_connection -net {BOT_VSS} -inst_pattern {.*_bottom} -pin_pattern {^VSS$} -ground
 add_global_connection -net {BOT_VSS} -inst_pattern {.*_bottom} -pin_pattern {^VSSE$}
+pin3d_add_macro_global_connections bottom BOT_VDD BOT_VSS
 global_connect
 
 set_voltage_domain -name {Core} -power {BOT_VDD} -ground {BOT_VSS}
@@ -88,5 +90,18 @@ add_pdn_stripe -grid {BOT} -layer {M7} -width {1.4} -pitch $bot_m7_pitch -offset
 add_pdn_connect -grid {BOT} -layers {M1 M4}
 add_pdn_connect -grid {BOT} -layers {M4 M7}
 
-pdngen
+# pin3d_add_macro_grids \
+#   -tier bottom \
+#   -grid_prefix BOT \
+#   -voltage_domain Core \
+#   -nets {BOT_VDD BOT_VSS} \
+#   -grid_mode pg_pins \
+#   -macro_layers {} \
+#   -stripe_widths {} \
+#   -stripe_pitches {} \
+#   -stripe_offsets {} \
+#   -stripe_spacings {} \
+#   -connect_layers {{M4 M7}}
+
+# pdngen
 puts "INFO: Done hetero bottom PDN."

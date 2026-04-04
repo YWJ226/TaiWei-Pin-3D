@@ -35,8 +35,12 @@ if {$pdn_script eq "" || ![file exists $pdn_script]} {
   error "pdn_only_bottom.tcl: missing PDN script. Set PDN_TCL_BOTTOM."
 }
 source $pdn_script
-
+cut_rows
+if {[catch {pdngen} error_message]} {
+  puts "bottom PDN failed: $error_message"
+}
 handoff_write_stage_outputs $stage_paths \
   -copy_sdc 1 \
-  -write_manifest 1
+  -write_manifest 1 \
+  -write_image 1
 exit

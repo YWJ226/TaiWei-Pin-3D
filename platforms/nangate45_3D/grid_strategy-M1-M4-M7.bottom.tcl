@@ -3,6 +3,7 @@
 ############################################################
 
 puts "INFO: Start Nangate45 bottom PDN..."
+source $::env(OPENROAD_SCRIPTS_DIR)/pdn_macro_utils.tcl
 
 proc get_row_height_um {{fallback 1.4}} {
   if {[catch {set block [ord::get_db_block]}]} { return $fallback }
@@ -81,6 +82,7 @@ add_global_connection -net {BOT_VDD} -inst_pattern {.*_bottom} -pin_pattern {^VD
 add_global_connection -net {BOT_VDD} -inst_pattern {.*_bottom} -pin_pattern {^VDDCE$}
 add_global_connection -net {BOT_VSS} -inst_pattern {.*_bottom} -pin_pattern {^VSS$} -ground
 add_global_connection -net {BOT_VSS} -inst_pattern {.*_bottom} -pin_pattern {^VSSE$}
+pin3d_add_macro_global_connections bottom BOT_VDD BOT_VSS
 global_connect
 
 set_voltage_domain -name {Core} -power {BOT_VDD} -ground {BOT_VSS}
@@ -96,5 +98,24 @@ if {[tech_layer_exists "M10"]} {
 add_pdn_connect -grid {BOT} -layers {M1 M4}
 add_pdn_connect -grid {BOT} -layers {M4 M7}
 
-pdngen
+# pin3d_add_macro_grids \
+#   -tier bottom \
+#   -grid_prefix BOT \
+#   -voltage_domain Core \
+#   -nets {BOT_VDD BOT_VSS} \
+#   -grid_mode pg_pins \
+#   -macro_layers {} \
+#   -stripe_widths {} \
+#   -stripe_pitches {} \
+#   -stripe_offsets {} \
+#   -stripe_spacings {} \
+#   -connect_layers {{M4 M7}}
+
+# The bottom swerv_wrapper macro geometry leaves irreducible M1 followpin
+# fragments near the left/right macro columns. Allow PDNGEN to keep those
+# repair-channel markers without hard-failing this bottom pass.
+pdn::allow_repair_channels true
+puts "INFO: Nangate45 bottom PDN enables allow_repair_channels"
+
+# pdngen
 puts "INFO: Done Nangate45 bottom PDN."

@@ -339,6 +339,26 @@ proc or_rebuild_rows_for_site {new_site tier} {
     lassign $::env(MACRO_PLACE_HALO) halo_x halo_y
     set halo_max [expr max($halo_x, $halo_y)]
     set blockage_width $halo_max
+    if {[info exists ::env(PIN3D_REBUILD_ROW_BLOCKAGE_HALO)] && $::env(PIN3D_REBUILD_ROW_BLOCKAGE_HALO) ne ""} {
+      set override_vals $::env(PIN3D_REBUILD_ROW_BLOCKAGE_HALO)
+      switch -- [llength $override_vals] {
+        1 {
+          set blockage_width [expr {double([lindex $override_vals 0])}]
+        }
+        2 {
+          set bx [expr {double([lindex $override_vals 0])}]
+          set by [expr {double([lindex $override_vals 1])}]
+          set blockage_width [expr {max($bx, $by)}]
+        }
+        default {
+          error "ERROR: PIN3D_REBUILD_ROW_BLOCKAGE_HALO must have 1 or 2 values, got '$::env(PIN3D_REBUILD_ROW_BLOCKAGE_HALO)'"
+        }
+      }
+      if {$blockage_width < 0.0} {
+        error "ERROR: PIN3D_REBUILD_ROW_BLOCKAGE_HALO must be >= 0, got $blockage_width"
+      }
+      puts "INFO: or_rebuild_rows_for_site uses override blockage halo $blockage_width um for tier '$tier'"
+    }
     source $::env(OPENROAD_SCRIPTS_DIR)/placement_blockages.tcl
     clear_channels
     block_channels $blockage_width $tier

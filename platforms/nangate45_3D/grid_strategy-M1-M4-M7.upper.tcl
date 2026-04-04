@@ -3,6 +3,7 @@
 ############################################################
 
 puts "INFO: Start Nangate45 upper PDN..."
+source $::env(OPENROAD_SCRIPTS_DIR)/pdn_macro_utils.tcl
 
 proc get_row_height_um {{fallback 1.4}} {
   if {[catch {set block [ord::get_db_block]}]} { return $fallback }
@@ -80,6 +81,8 @@ add_global_connection -net {TOP_VDD} -inst_pattern {.*_upper} -pin_pattern {^VDD
 add_global_connection -net {TOP_VDD} -inst_pattern {.*_upper} -pin_pattern {^VDDCE$}
 add_global_connection -net {TOP_VSS} -inst_pattern {.*_upper} -pin_pattern {^VSS$} -ground
 add_global_connection -net {TOP_VSS} -inst_pattern {.*_upper} -pin_pattern {^VSSE$}
+pin3d_add_macro_global_connections bottom BOT_VDD BOT_VSS
+pin3d_add_macro_global_connections upper TOP_VDD TOP_VSS
 global_connect
 
 set_voltage_domain -name {Core} -power {TOP_VDD} -ground {TOP_VSS}
@@ -92,5 +95,18 @@ add_pdn_stripe -grid {TOP} -layer {M7_m} -width {2.4} -pitch $top_m7_pitch -offs
 add_pdn_connect -grid {TOP} -layers {M1_m M4_m}
 add_pdn_connect -grid {TOP} -layers {M4_m M7_m}
 
-pdngen
+# pin3d_add_macro_grids \
+#   -tier upper \
+#   -grid_prefix TOP \
+#   -voltage_domain Core \
+#   -nets {TOP_VDD TOP_VSS} \
+#   -grid_mode pg_pins \
+#   -macro_layers {} \
+#   -stripe_widths {} \
+#   -stripe_pitches {} \
+#   -stripe_offsets {} \
+#   -stripe_spacings {} \
+#   -connect_layers {{M4_m M7_m}}
+
+# pdngen
 puts "INFO: Done Nangate45 upper PDN."
