@@ -98,7 +98,7 @@ utl::pop_metrics_stage
 [catch {check_placement -verbose}]
 
 set skip_cts_post_repair 0
-if {![info exists ::env(OPENROAD_CTS_OWNER_REPAIR_TIMING)]} {
+if {[info exists ::env(OPENROAD_CTS_OWNER_REPAIR_TIMING)]} {
   set skip_cts_post_repair $::env(OPENROAD_CTS_OWNER_REPAIR_TIMING)
 }
 if {!$skip_cts_post_repair} {
