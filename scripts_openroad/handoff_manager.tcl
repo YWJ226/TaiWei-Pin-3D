@@ -386,13 +386,9 @@ proc handoff_write_stage_outputs {stage_paths args} {
     handoff_copy_aliases [dict get $stage_paths sdc_out] [dict get $stage_paths sdc_aliases]
   }
   if {$opt(-write_image) && [dict get $stage_paths image_out] ne "" && [llength [info commands save_image]]} {
-    set allow_headless_images 0
-    if {[info exists ::env(OPENROAD_ALLOW_HEADLESS_SAVE_IMAGE)] && $::env(OPENROAD_ALLOW_HEADLESS_SAVE_IMAGE) ne ""} {
-      set allow_headless_images $::env(OPENROAD_ALLOW_HEADLESS_SAVE_IMAGE)
-    }
     set display_ok [expr {[info exists ::env(DISPLAY)] && $::env(DISPLAY) ne ""}]
     set qt_offscreen [expr {[info exists ::env(QT_QPA_PLATFORM)] && $::env(QT_QPA_PLATFORM) eq "offscreen"}]
-    if {$display_ok || $qt_offscreen || $allow_headless_images} {
+    if {$display_ok || $qt_offscreen} {
       if {[catch {save_image -resolution 0.1 [dict get $stage_paths image_out]} err]} {
         puts "WARN(OR): failed to write image [dict get $stage_paths image_out] : $err"
       }
