@@ -28,15 +28,15 @@ Our flow allows academic researchers to validate and compare their 3D point tool
 source env.sh
 ```
 
-### Example 1: Run the open-source flow for GCD design (3D stack setting:  ASAP7 + ASAP7)
+### Example 1: Run the open-source flow for GCD design (3D stack setting: ASAP7 + ASAP7)
 ```bash
-# Run open-source flow for the AES design (3D stack setting:  ASAP7 + ASAP7)
+# Run open-source flow for the GCD design (3D stack setting: ASAP7 + ASAP7)
 python3 run_experiments.py --flow ord --tech asap7_3D --case gcd
 ```
 
-### Example 2: Run the commerical flow for GCD design (3D stack setting:  ASAP7 + NanGate45)
+### Example 2: Run the commercial flow for GCD design (3D stack setting: ASAP7 + NanGate45)
 ```bash
-# Run open-source flow for the AES design (3D stack setting:  ASAP7 + NanGate45)
+# Run commercial flow for the GCD design (3D stack setting: ASAP7 + NanGate45)
 python3 run_experiments.py --flow cds --tech asap7_nangate45_3D --case gcd 
 ```
 After running above command (ASASP7-NanGate45-GCD), you can visualize chip layouts using OpenROAD's or Innovus's GUI.
@@ -104,10 +104,18 @@ bash experiment_scripts/gcd.sh
 
 </p>
 
+## What Is Unique In This 3D Flow
 
+This repository does not treat 3D IC implementation as a completely new backend flow. Instead, it reuses mature 2D engines and adds a small set of explicit 3D abstractions and stage controls that make the flow 3D-aware while keeping the toolchain practical and reproducible.
 
+The key strategies are:
 
-
+- **Unified 2D abstraction for F2F 3D**: hybrid bonding terminals (HBTs) are modeled as special vias in an extended metal stack, so existing 2D routers can realize cross-tier connections without a custom 3D router.
+- **Tier-specific library views**: every physical cell has tier-local masters such as `*_bottom` and `*_upper`, and both OpenROAD and Cadence use COVER views to hide the inactive tier from local optimization while preserving logical connectivity.
+- **Mixed-fanout split before detailed optimization**: the flow explicitly identifies nets whose real sinks span both tiers, inserts a tier-local split buffer to isolate one sink cluster, and converts one mixed-fanout net into two tier-pure fanout nets whenever possible.
+- **Tier-by-tier optimization instead of flat 3D optimization**: placement and legalization alternate between the upper and bottom tiers, with explicit tier policy, row/site rebuilding, and stage-specific active-tier control.
+- **Split PDN and staged CTS**: PDN is built separately for bottom and upper tiers, and CTS is structured as owner-tree plus receive-side optimization instead of a single flat 3D clock stage.
+- **3D-specific observability**: the flow reports both structural `cross-tier` nets and functional `mixed_fanout` nets, because these are different quantities and they must be tracked separately during 3D optimization.
 
 ## [Enablements](#enablements)
 PDK (Process Design Kit) preparation is a foundational component of a robust 3D physical design flow. 
@@ -139,67 +147,77 @@ This enablement strategy allows existing 2D physical design engines to operate o
 
 
 ## [Implementaion Flows](#implementation-flow)
-Our 3D IC implementation flow highlights three key features:
-- *Unified 2D technology abstraction for F2F 3D IC*: we model HBTs as special vias in an extended 2D metal stack, enabling unmodified 2D routers to realize cross-tier connections.
+Our current 3D IC implementation flow is organized around a few explicit 3D stages rather than hidden tool-specific hacks:
 
-- *Iterative tier-by-tier optimization and legalization with 2D placers*: we alternate placement optimization between tiers using **COVER** views, with tier-aware legalization to enforce tier-specific sites and masters for homogeneous and heterogeneous stacks.
+- *Front-end 3D construction*: after 2D synthesis and partitioning, the flow builds tier-aware 3D floorplan, IO, split-net, macro-placement and PDN views.
+- *Iterative tier-by-tier physical optimization*: upper and bottom tiers are optimized separately with inactive-tier COVER views and explicit tier policy.
+- *Staged clocking and routing*: CTS is split into owner-tree and receive-side optimization, then routing uses the full merged 3D metal stack.
+- *Stage-managed reproducibility*: every major stage writes canonical handoff files and metrics so the flow can be resumed, compared, and analyzed stage by stage.
 
-- *End-to-end 3D reference flow with hybrid toolchain support*: a unified scripting interface runs the RTL-to-GDS flow using OpenROAD, commercial tools, or mixed toolchains. Stage-wise checkpoints and METRICS2.1-compatible reports are exported to enable consistent, reproducible measurement.
 
+The following figure presents an overview of our homogeneous and heterogeneous Pin-3D physical design flow. The practical flow used in this repository has the following structure:
 
-The following figure presents an overview of our homogeneous and
-heterogeneous Pin-3D physical design flow. The flow comprises following key stages:
-- **Synthesis and 2D abstraction**: RTL is synthesized into a flat
-gate-level netlist using a common logical library, which is later mapped to
-tier-specific physical libraries for heterogeneous designs.
-
-- **Partitioning and 3D floorplanning**: An initial 2D floorplan
-undergoes timing-driven bipartitioning~\cite{zhiang_tritonpart_2023} to assign
-cells to tiers. The design is then translated into tier-aware 3D views with
-independent power delivery networks.
-
-- **Iterative 3D placement**: Placement refinement begins from a global 2D placement and proceeds through a
-die-by-die iterative optimization process.
-One tier is fixed while the other is optimized for timing and congestion, followed by legalization.
-
-- **3D clock tree synthesis (CTS)**: The clock tree is built on the
-bottom tier. Top-tier sinks connect to this tree through inter-tier vias,
-leveraging the unified 2D representation for vertical connectivity.
-
-- **3D routing and optimization**: Routing utilizes the full metal
-stack, modeling hybrid bonding terminals as special vias. Parasitics are then
-extracted to drive post-route timing and power closure.
-
-- **Metrics collection**: The flow records runtime, memory, timing,
-power, wirelength, congestion, and violations (DRVs/FEPs) in a structured
-format for both open-source and commercial reference flows.
+- **2D bootstrap**: RTL is synthesized, floorplanned and partitioned in 2D to generate the initial tier assignment.
+- **3D floorplan and IO construction**: the partitioned design is converted into a tier-aware 3D view with tier-local libraries, tier-local PDN intent and HBT-capable routing resources.
+- **Mixed-fanout split stage**: before the main physical optimization loop, the flow isolates opposite-tier sink clusters so later optimization works on cleaner tier-local fanout structure.
+- **Iterative 3D placement and legalization**: the flow alternates active optimization between upper and bottom tiers instead of optimizing both tiers blindly in one flat pass.
+- **Staged 3D CTS**: the clock tree is first built from an owner tier view and then refined from the receive side.
+- **3D route and final extraction**: routing uses the merged 3D stack, then timing, power, DRC and cross-tier reports are collected from final outputs.
 
 <p align="center">
   <img alt="Pin3DFlow" height="600" src="./README.assets/Pin3DFlow.png">
 </p>
 
+### Key 3D Semantics
+
+Two metrics are central to this flow and are intentionally treated as different objects:
+
+- **Structural `cross-tier` net**: a net that still spans both tiers in the merged physical view. This is the physical HBT pressure metric.
+- **Functional `mixed_fanout` net**: a net whose real sinks span both tiers. This is the optimization target of the split-net stage.
+
+This distinction is important because a split operation may keep one controlled cross-tier bridge in the physical graph while still converting the original fanout into tier-pure branches for later optimization.
+
 ### [Stage-by-Stage](#Stage-by-Stage)
 
-> The rows below mirror your **actual bash pipelines** (`test/aes/ord/run.sh` and `test/aes/cds/run.sh`). Targets that consume specific configs are annotated.
+> The rows below summarize the current public stage graph used by the maintained OpenROAD and Cadence launchers.
 
 | Stage                   | OpenROAD target            | Cadence target             | Notes                                                        |
 | :---------------------- | :------------------------- | :------------------------- | :----------------------------------------------------------- |
 | **Clean**               | `clean_all`                | `clean_all`                | Remove `results/ reports/ logs/ objects/`.                   |
-| **2D Synthesis**        | `ord-synth`                | `cds-synth`                | RTL → gate with 2D PDK. *(Uses `config2d.mk`)*               |
-| **2D Pre‑place**        | `ord-preplace`             | `cds-preplace`             | Floorplan/IO staging for partitioning. *(Uses `config2d.mk`)* |
-| **Tier Partition**      | `ord-tier-partition`       | `cds-tier-partition`       | Split into upper/bottom tiers. *(Uses `config2d.mk`)*        |
-| **3D Prep (views)**     | `ord-pre`                  | `cds-pre`                  | Generate 3D views / import partition artifacts. *(Uses `config.mk`)* |
-| **3D PDN**              | `ord-3d-pdn`               | `cds-3d-pdn`               | Unified PDN. *(Uses `config.mk`)*                            |
-| **Place Init**          | `ord-place-init`           | `cds-place-init`           | Initialize cross‑tier placement. *(Uses `config.mk`)*        |
-| **Place — Upper Tier**  | `ord-place-upper`          | `cds-place-upper`          | Alternate with bottom for `iteration` loops. *(Uses `config_bottom_cover.mk`)* |
-| **Place — Bottom Tier** | `ord-place-bottom`         | `cds-place-bottom`         | Alternating cross‑tier refinement. *(Uses `config_upper_cover.mk`)* |
-| **Place Finish**        | `ord-pre_cts`              | `cds-gp2lg`         | Refinement. *(Uses `config.mk`)*                             |
-| **Legalize — Upper**    | `ord-legalize-upper`       | `cds-legalize-upper`       | Legalize upper tier. *(Uses `config_bottom_cover.mk`)*       |
-| **Legalize — Bottom**   | `ord-legalize-bottom`      | `cds-legalize-bottom`      | Legalize bottom tier and merge. *(Uses `config_upper_cover.mk`)* |
-| **CTS**                 | `ord-cts`                  | `cds-cts`                  | Clock trees per die with cross‑die alignment. *(Uses `config.mk`)* |
-| **Route (3D)**          | `ord-route`                | `cds-route`                | Detailed routing and create HBT vias. (Uses `config.mk`)*    |
-| **Final / Reports**     | `ord-final`                | `cds-final`                | Report collation. *(Uses `config.mk`)*                       |
+| **2D Bootstrap**        | `ord-3d-flow-2dpart`       | `cds-3d-flow-2dpart`       | Runs synth, preplace and partition with `config2d.mk`.       |
+| **3D Prep (views)**     | `ord-pre`                  | `cds-pre`                  | Import partition artifacts and build 3D logical views.       |
+| **3D Floorplan**        | `ord-3d-floorplan`         | `cds-3d-floorplan`         | Build tier-aware floorplan from the partitioned design.      |
+| **3D IO**               | `ord-3d-io`                | `cds-3d-io`                | Tier-aware IO/pin placement.                                 |
+| **Split Mixed Fanout**  | `ord-3d-split-net`         | `cds-3d-split-net`         | Split opposite-tier sink clusters before main optimization.  |
+| **Macro Place — Upper** | `ord-place-macro-upper`    | `cds-place-macro-upper`    | Place upper-tier macros with inactive-tier abstraction.      |
+| **Macro Place — Bottom**| `ord-place-macro-bottom`   | `cds-place-macro-bottom`   | Place bottom-tier macros and merge handoff.                  |
+| **3D PDN**              | `ord-3d-pdn-only`          | `cds-3d-pdn-only`          | Runs bottom PDN then upper PDN explicitly.                   |
+| **Place Init**          | `ord-place-init`           | `cds-place-init`           | Initialize 3D placement state.                               |
+| **Init — Upper**        | `ord-place-init-upper`     | `cds-place-init-upper`     | Optional upper-owner init refinement.                        |
+| **Init — Bottom**       | `ord-place-init-bottom`    | `cds-place-init-bottom`    | Optional bottom-owner init refinement.                       |
+| **Place — Upper Tier**  | `ord-place-upper`          | `cds-place-upper`          | Upper-owner timing/congestion refinement.                    |
+| **Place — Bottom Tier** | `ord-place-bottom`         | `cds-place-bottom`         | Bottom-owner timing/congestion refinement.                   |
+| **GP to LG Handoff**    | `ord-gp2lg`                | `cds-gp2lg`                | Convert iterative global-placement handoff to legalize view. |
+| **Legalize — Upper**    | `ord-legalize-upper`       | `cds-legalize-upper`       | Upper-owner legalization and preCTS cleanup.                 |
+| **Legalize — Bottom**   | `ord-legalize-bottom`      | `cds-legalize-bottom`      | Bottom-owner legalization and merged place handoff.          |
+| **CTS Owner Stage**     | `ord-cts`                  | `cds-cts`                  | Owner-tree CTS stage.                                        |
+| **CTS Receive Stage**   | `ord-cts-post`             | `cds-cts`                  | Receive-side clock optimization and cleanup.                 |
+| **Route (3D)**          | `ord-route`                | `cds-route`                | Full 3D routing on the merged stack with HBT generation.     |
+| **Final / Reports**     | `ord-final`                | `cds-restore/final`              | Final reports, summaries, and restored final database.       |
 | **Thermal / Hotspot**   | `ord-hotspot`              |                            | Reuses OpenROAD HotSpot harness.                             |
+
+For quick stage-level debugging or restart, a single make target can be launched directly with:
+
+```bash
+bash test/common/run_stage.sh <enablement> <flow_variant> <use_flow> <design> <make_target>
+```
+
+Example:
+
+```bash
+bash test/common/run_stage.sh asap7_3D debug_openroad openroad ibex ord-cts
+bash test/common/run_stage.sh asap7_nangate45_3D debug_cadence cadence gcd cds-pre
+```
 
 ### [Outputs](#Outputs)
 
@@ -226,6 +244,5 @@ If your research, products or publications benefit from this repository, we kind
 
 ## References
 [1] L. Jiang, A. B. Kahng, Z. Wang*, Z. Zheng, "Invited: Toward Sustainable and Transparent Benchmarking for Academic Physical Design Research", Proc. ISPD, 2026.
-
 
 
