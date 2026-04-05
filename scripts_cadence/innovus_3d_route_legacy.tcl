@@ -4,10 +4,7 @@
 # ============================================================
 
 # Core setup
-source $::env(CADENCE_SCRIPTS_DIR)/utils.tcl
-source $::env(CADENCE_SCRIPTS_DIR)/lib_setup.tcl
-source $::env(CADENCE_SCRIPTS_DIR)/design_setup.tcl
-source $::env(CADENCE_SCRIPTS_DIR)/handoff_manager.tcl
+source $::env(CADENCE_SCRIPTS_DIR)/route_stage_common.tcl
 
 # Environment directories
 set LOG_DIR       [_get LOG_DIR]
@@ -29,46 +26,24 @@ source $::env(CADENCE_SCRIPTS_DIR)/tier_cell_policy.tcl
 source $::env(CADENCE_SCRIPTS_DIR)/extract_report.tcl
 handoff_log_paths $stage_paths
 
-setMultiCpuUsage -localCpu [_get NUM_CORES 16]
+puts "INFO: Running staged route stage '$stage_name'."
 
-setGenerateViaMode -auto true
-handoff_prepare_init_globals $stage_paths
-init_design -setup {WC_VIEW} -hold {BC_VIEW}
-set_power_analysis_mode -leakage_power_view WC_VIEW -dynamic_power_view WC_VIEW
-set_interactive_constraint_modes {CON}
-setAnalysisMode -reset
-setAnalysisMode -analysisType onChipVariation -cppr both
-set_interactive_constraint_modes [all_constraint_modes -active]
-set_propagated_clock [all_clocks]
-set_clock_propagation propagated
-defIn $DEF_IN
+route_init_design_from_paths $stage_paths
+route_apply_common_layer_setup
+route_apply_router_setup
 
-if {[info exists ::env(MAX_ROUTING_LAYER)]} {
-  setDesignMode -topRoutingLayer $::env(MAX_ROUTING_LAYER)
+set create_obs_stage [_get CREATE_OBS_STAGE ""]
+if {$create_obs_stage eq "ROUTE"} {
+  puts "INFO: Create HBT allow window in stage ROUTE"
+  source $::env(CADENCE_SCRIPTS_DIR)/innovus_hb_layer_obs.tcl
+  catch { create_hb_layer_obs }
 }
-if {[info exists ::env(MIN_ROUTING_LAYER)]} {
-  setDesignMode -bottomRoutingLayer $::env(MIN_ROUTING_LAYER)
-}
-
-setNanoRouteMode -grouteExpWithTimingDriven false
-if {![info exists ::env(DETAILED_ROUTE_END_ITERATION)]} {
-  set ::env(DETAILED_ROUTE_END_ITERATION) 20
-}
-setNanoRouteMode -drouteEndIteration $::env(DETAILED_ROUTE_END_ITERATION)
-setNanoRouteMode -drouteVerboseViolationSummary 1
-setNanoRouteMode -routeWithSiDriven true
-setNanoRouteMode -routeWithTimingDriven true
-setNanoRouteMode -routeUseAutoVia true
-setNanoRouteMode -routeWithViaInPin "1:1"
-setNanoRouteMode -routeWithViaOnlyForStandardCellPin "1:1"
-setNanoRouteMode -drouteOnGridOnly "via 1:1"
-setNanoRouteMode -drouteAutoStop false
-setNanoRouteMode -drouteExpAdvancedMarFix true
-setNanoRouteMode -routeExpAdvancedTechnology true
 
 extract_cross_tier_nets [file join $LOG_DIR "5_route.before.nets"]
 extract_cross_tier_nets [file join $LOG_DIR "5_route.clock.before.nets"] -clock_only 1
 routeDesign
+extract_cross_tier_nets [file join $LOG_DIR "5_route.after.nets"]
+extract_cross_tier_nets [file join $LOG_DIR "5_route.clock.after.nets"] -clock_only 1
 
 set_tier_placement_status bottom fixed
 set_tier_placement_status upper fixed
