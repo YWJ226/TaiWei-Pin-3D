@@ -92,3 +92,67 @@ Practical mitigations:
   - macro-free Cadence cases
   - the same macro case without additional layers
   - the same macro case with reduced placement optimization effort
+
+## Cadence Legacy Route Can Create Large DRC Regressions After `routeDesign`
+
+### Summary
+
+In the Cadence legacy route flow, applying:
+
+- `apply_tier_policy [cts_owner_tier] -fixlib 1 -allow_net $effective_allow_net`
+
+after `routeDesign`, and then running:
+
+- `optDesign -postRoute -outDir $REPORTS_DIR -prefix route_legacy`
+
+can introduce a large DRC regression.
+
+This is currently treated as a flow issue in the legacy route sequence, not as
+a normal expectation of the route stage.
+
+### Affected Scope
+
+- Cadence flow
+- legacy single-stage route:
+  - `cds-route`
+- script:
+  - [innovus_3d_route_legacy.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_cadence/innovus_3d_route_legacy.tcl)
+
+### Symptom
+
+The route stage completes, but final DRC is much worse than the pure route
+stage expectation.
+
+Observed example:
+
+- [final_summary.txt](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/logs/asap7_3D/swerv_wrapper/cadence_route_legacy_cmp/final_summary.txt)
+  - `DRC Violations = 50466`
+
+The corresponding route log shows that the legacy flow explicitly runs
+owner-tier postRoute optimization after `routeDesign`:
+
+- [5_route.log](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/logs/asap7_3D/swerv_wrapper/cadence_route_legacy_cmp/5_route.log)
+  - `Running optDesign -postRoute ...`
+
+### Current Interpretation
+
+The suspected mechanism is:
+
+- `routeDesign` finishes on one routed topology
+- `apply_tier_policy` is then re-applied after route
+- this changes optimization legality / allowed cell usage / row policy late in
+  the flow
+- `optDesign -postRoute` then perturbs the routed design under a different
+  policy than the one used during the actual route stage
+
+This late policy switch is currently considered unsafe for DRC stability.
+
+### Current Workaround
+
+Prefer either:
+
+- pure route-only flow for cleaner routing behavior
+- or staged postRoute flow with explicit receive/owner separation
+
+Avoid using the legacy postRoute step as the baseline for DRC-sensitive
+comparison until this interaction is better controlled.

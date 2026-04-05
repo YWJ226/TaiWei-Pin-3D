@@ -61,7 +61,7 @@ set requested_allow_net [cts_owner_requested_allow_net]
 set effective_allow_net [cts_owner_allow_net]
 _report_allow_net_resolution "route-legacy" $requested_allow_net $effective_allow_net
 puts "INFO: Running optDesign -postRoute (owner=[cts_owner_tier], receive=[cts_receive_tier], requested_allow_net=[_format_allow_net_class $requested_allow_net], effective_allow_net=[_format_allow_net_class $effective_allow_net])."
-apply_tier_policy [cts_owner_tier] -fixlib 1 -allow_net $effective_allow_net
+# apply_tier_policy [cts_owner_tier] -fixlib 1 -allow_net $effective_allow_net
 optDesign -postRoute -outDir $REPORTS_DIR -prefix route_legacy
 
 extract_cross_tier_nets [file join $LOG_DIR "5_route.after.nets"]
