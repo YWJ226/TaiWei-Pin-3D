@@ -1,6 +1,13 @@
+# This script was written and developed by Zhiyu Zheng at Fudan University; however, the underlying
+# commands and reports are copyrighted by Cadence. We thank Cadence for
+# granting permission to share our research to help promote and foster the next
+# generation of innovators.
 # ============================================================
 # innovus_3d_route_legacy.tcl
-# Legacy route + postRoute baseline kept for robustness comparison.
+# Legacy single-stage route flow:
+#   routeDesign
+#   + owner-tier optDesign -postRoute
+# Outputs are kept as 5_route.{def,v,sdc} for compatibility.
 # ============================================================
 
 # Core setup
@@ -24,9 +31,10 @@ set sdc $SDC_IN
 source $::env(CADENCE_SCRIPTS_DIR)/mmmc_setup.tcl
 source $::env(CADENCE_SCRIPTS_DIR)/tier_cell_policy.tcl
 source $::env(CADENCE_SCRIPTS_DIR)/extract_report.tcl
+source $::env(CADENCE_SCRIPTS_DIR)/cts_stage_common.tcl
 handoff_log_paths $stage_paths
 
-puts "INFO: Running staged route stage '$stage_name'."
+puts "INFO: Running legacy route stage '$stage_name' (routeDesign + owner-tier postRoute opt, 5_route.* outputs)."
 
 route_init_design_from_paths $stage_paths
 route_apply_common_layer_setup
@@ -39,16 +47,15 @@ if {$create_obs_stage eq "ROUTE"} {
   catch { create_hb_layer_obs }
 }
 
-extract_cross_tier_nets [file join $LOG_DIR "5_route.before.nets"]
-extract_cross_tier_nets [file join $LOG_DIR "5_route.clock.before.nets"] -clock_only 1
+extract_cross_tier_nets [file join $LOG_DIR "5_0_route.before.nets"]
+extract_cross_tier_nets [file join $LOG_DIR "5_0_route.clock.before.nets"] -clock_only 1
 routeDesign
-extract_cross_tier_nets [file join $LOG_DIR "5_route.after.nets"]
-extract_cross_tier_nets [file join $LOG_DIR "5_route.clock.after.nets"] -clock_only 1
+extract_cross_tier_nets [file join $LOG_DIR "5_0_route.after.nets"]
+extract_cross_tier_nets [file join $LOG_DIR "5_0_route.clock.after.nets"] -clock_only 1
 
 set_tier_placement_status bottom fixed
 set_tier_placement_status upper fixed
 
-source $::env(CADENCE_SCRIPTS_DIR)/cts_stage_common.tcl
 set cts_policy_stage "owner-tree"
 set requested_allow_net [cts_owner_requested_allow_net]
 set effective_allow_net [cts_owner_allow_net]
