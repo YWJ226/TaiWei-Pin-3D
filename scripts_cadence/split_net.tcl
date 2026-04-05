@@ -22,6 +22,7 @@ namespace eval ::mixed_tier_split {
     dry_run              0
     run_eco_place        0
     verify_processed     1
+    detail_log           0
     net_prefix           SPLITNET
     inst_prefix          SPLITBUF
   }
@@ -35,12 +36,22 @@ namespace eval ::mixed_tier_split {
     processed_residual   0
     io_upper             0
     io_bottom            0
+    existing_split_bufs  0
   }
 
   variable SKIP_REASONS
   array set SKIP_REASONS {}
 
   variable PROCESSED_SPLITS {}
+
+  variable BUFFER_MASTER_CHOICES
+  array set BUFFER_MASTER_CHOICES {}
+
+  variable USED_NET_NAMES
+  array set USED_NET_NAMES {}
+
+  variable USED_INST_NAMES
+  array set USED_INST_NAMES {}
 }
 
 proc ::mixed_tier_split::box_flat4 {box} {
@@ -91,6 +102,56 @@ proc ::mixed_tier_split::record_skip {reason} {
     set SKIP_REASONS($reason) 0
   }
   incr SKIP_REASONS($reason)
+}
+
+proc ::mixed_tier_split::init_name_cache {} {
+  variable USED_NET_NAMES
+  variable USED_INST_NAMES
+
+  catch {array unset USED_NET_NAMES}
+  catch {array unset USED_INST_NAMES}
+  array set USED_NET_NAMES {}
+  array set USED_INST_NAMES {}
+
+  foreach net_name [dbGet top.nets.name] {
+    if {$net_name ne ""} {
+      set USED_NET_NAMES($net_name) 1
+    }
+  }
+  foreach inst_name [dbGet top.insts.name] {
+    if {$inst_name ne ""} {
+      set USED_INST_NAMES($inst_name) 1
+    }
+  }
+}
+
+proc ::mixed_tier_split::reserve_name {kind name} {
+  variable USED_NET_NAMES
+  variable USED_INST_NAMES
+
+  switch -- $kind {
+    net {
+      set USED_NET_NAMES($name) 1
+    }
+    inst {
+      set USED_INST_NAMES($name) 1
+    }
+  }
+}
+
+proc ::mixed_tier_split::name_exists {kind name} {
+  variable USED_NET_NAMES
+  variable USED_INST_NAMES
+
+  switch -- $kind {
+    net {
+      return [info exists USED_NET_NAMES($name)]
+    }
+    inst {
+      return [info exists USED_INST_NAMES($name)]
+    }
+  }
+  return 0
 }
 
 proc ::mixed_tier_split::is_candidate_net {net_ptr} {
@@ -182,39 +243,23 @@ proc ::mixed_tier_split::collect_sinks_by_tier {net_ptr} {
     unknown $unknown_sinks]
 }
 
-proc ::mixed_tier_split::opposite_tier {tier} {
-  switch -- $tier {
-    upper {
-      return "bottom"
-    }
-    bottom {
-      return "upper"
-    }
-    default {
-      return ""
-    }
+proc ::mixed_tier_split::choose_buffer_tier {upper_count bottom_count} {
+  if {$upper_count <= 0 && $bottom_count <= 0} {
+    return [list "" "no_supported_instance_sinks"]
   }
-}
-
-proc ::mixed_tier_split::choose_buffer_tier {driver_tier upper_count bottom_count} {
-  set opposite_tier [::mixed_tier_split::opposite_tier $driver_tier]
-  switch -- $opposite_tier {
-    upper {
-      if {$upper_count > 0} {
-        return [list upper "opposite_to_driver"]
-      }
-      return [list "" "no_supported_upper_instance_sinks"]
-    }
-    bottom {
-      if {$bottom_count > 0} {
-        return [list bottom "opposite_to_driver"]
-      }
-      return [list "" "no_supported_bottom_instance_sinks"]
-    }
-    default {
-      return [list "" "driver_tier_unknown"]
-    }
+  if {$upper_count > $bottom_count} {
+    return [list upper "upper_heavy_fanout"]
   }
+  if {$bottom_count > $upper_count} {
+    return [list bottom "bottom_heavy_fanout"]
+  }
+  if {$upper_count > 0} {
+    return [list upper "tie_choose_upper"]
+  }
+  if {$bottom_count > 0} {
+    return [list bottom "tie_choose_bottom"]
+  }
+  return [list "" "no_supported_instance_sinks"]
 }
 
 proc ::mixed_tier_split::buffer_drive_score {master_name} {
@@ -223,29 +268,6 @@ proc ::mixed_tier_split::buffer_drive_score {master_name} {
     set score $drive
   }
   return $score
-}
-
-proc ::mixed_tier_split::next_power_of_two {value} {
-  if {$value <= 1} {
-    return 1
-  }
-  set power 1
-  while {$power < $value} {
-    set power [expr {$power * 2}]
-  }
-  return $power
-}
-
-proc ::mixed_tier_split::required_buffer_drive_score {moved_sink_count} {
-  set per_drive_unit 24
-  if {[info exists ::env(PIN3D_SPLIT_FANOUT_PER_DRIVE)] && $::env(PIN3D_SPLIT_FANOUT_PER_DRIVE) ne ""} {
-    set per_drive_unit $::env(PIN3D_SPLIT_FANOUT_PER_DRIVE)
-  }
-  if {$per_drive_unit < 1} {
-    set per_drive_unit 24
-  }
-  set units [expr {int(ceil(double(max($moved_sink_count, 1)) / double($per_drive_unit)))}]
-  return [::mixed_tier_split::next_power_of_two $units]
 }
 
 proc ::mixed_tier_split::master_io_summary {master_name} {
@@ -272,7 +294,7 @@ proc ::mixed_tier_split::master_io_summary {master_name} {
   return [list $in_cnt $out_cnt $in_term $out_term]
 }
 
-proc ::mixed_tier_split::choose_buffer_master {tier moved_sink_count} {
+proc ::mixed_tier_split::choose_buffer_master {tier} {
   variable BUFFER_MASTER_CHOICES
   if {![info exists BUFFER_MASTER_CHOICES($tier)]} {
     set candidates {}
@@ -298,16 +320,8 @@ proc ::mixed_tier_split::choose_buffer_master {tier moved_sink_count} {
   if {[llength $sorted] == 0} {
     return ""
   }
-
-  set required_drive [::mixed_tier_split::required_buffer_drive_score $moved_sink_count]
-  foreach item $sorted {
-    if {[lindex $item 0] >= $required_drive} {
-      return [concat [lrange $item 1 end] [list [lindex $item 0] $required_drive]]
-    }
-  }
-
-  set largest [lindex $sorted end]
-  return [concat [lrange $largest 1 end] [list [lindex $largest 0] $required_drive]]
+  set smallest [lindex $sorted 0]
+  return [concat [lrange $smallest 1 end] [list [lindex $smallest 0]]]
 }
 
 proc ::mixed_tier_split::object_label {obj_ptr} {
@@ -318,13 +332,14 @@ proc ::mixed_tier_split::object_label {obj_ptr} {
   return [dbGet $obj_ptr.name]
 }
 
-proc ::mixed_tier_split::ensure_unique_name {base existing_names} {
+proc ::mixed_tier_split::ensure_unique_name {kind base} {
   set name $base
   set idx 0
-  while {[lsearch -exact $existing_names $name] >= 0 || [dbGet -e [dbGet -p top.nets.name $name]] ne "" || [dbGet -e [dbGet -p top.insts.name $name]] ne ""} {
+  while {[::mixed_tier_split::name_exists $kind $name]} {
     incr idx
     set name "${base}_${idx}"
   }
+  ::mixed_tier_split::reserve_name $kind $name
   return $name
 }
 
@@ -401,7 +416,7 @@ proc ::mixed_tier_split::split_net_with_buffer {net_ptr driver_obj sinks_by_tier
   set upper_count [llength $upper_inst_sinks]
   set bottom_count [llength $bottom_inst_sinks]
   set driver_tier [tier_classify_object_ptr $driver_obj]
-  lassign [::mixed_tier_split::choose_buffer_tier $driver_tier $upper_count $bottom_count] buffer_tier tier_reason
+  lassign [::mixed_tier_split::choose_buffer_tier $upper_count $bottom_count] buffer_tier tier_reason
   if {$buffer_tier eq ""} {
     return [list 0 $tier_reason]
   }
@@ -427,22 +442,23 @@ proc ::mixed_tier_split::split_net_with_buffer {net_ptr driver_obj sinks_by_tier
   }
 
   set moved_sink_count [expr {[llength $moved_inst_sinks] + [llength $moved_term_sinks]}]
-  set buffer_info [::mixed_tier_split::choose_buffer_master $buffer_tier $moved_sink_count]
+  set buffer_info [::mixed_tier_split::choose_buffer_master $buffer_tier]
   if {$buffer_info eq ""} {
     return [list 0 "no_tier_buffer_master"]
   }
-  lassign $buffer_info buffer_master _ _ chosen_drive required_drive
+  lassign $buffer_info buffer_master _ _ chosen_drive
 
-  set existing_names [concat [dbGet top.nets.name] [dbGet top.insts.name]]
   set safe_net_name [::mixed_tier_split::sanitize_name_component $net_name]
-  set inst_name [::mixed_tier_split::ensure_unique_name [format "%s_%s_%s" $CFG(inst_prefix) $buffer_tier $safe_net_name] $existing_names]
-  set branch_net [::mixed_tier_split::ensure_unique_name [format "%s_%s_%s" $CFG(net_prefix) $buffer_tier $safe_net_name] $existing_names]
+  set inst_name [::mixed_tier_split::ensure_unique_name inst [format "%s_%s_%s" $CFG(inst_prefix) $buffer_tier $safe_net_name]]
+  set branch_net [::mixed_tier_split::ensure_unique_name net [format "%s_%s_%s" $CFG(net_prefix) $buffer_tier $safe_net_name]]
 
-  puts $action_fh "ACTION net=$net_name driver=[::mixed_tier_split::object_label $driver_obj] driver_tier=$driver_tier buffer_master=$buffer_master buffer_tier=$buffer_tier retained_tier=$retained_tier tier_reason=$tier_reason moved_sink_count=$moved_sink_count chosen_drive=$chosen_drive required_drive=$required_drive new_inst=$inst_name new_net=$branch_net"
+  puts $action_fh "ACTION net=$net_name driver=[::mixed_tier_split::object_label $driver_obj] driver_tier=$driver_tier buffer_master=$buffer_master buffer_tier=$buffer_tier retained_tier=$retained_tier tier_reason=$tier_reason moved_sink_count=$moved_sink_count chosen_drive=$chosen_drive new_inst=$inst_name new_net=$branch_net"
 
   if {$CFG(dry_run)} {
-    foreach inst_term $moved_inst_sinks {
-      puts $action_fh "  DRYRUN MOVE [dbGet $inst_term.name] -> $branch_net"
+    if {$CFG(detail_log)} {
+      foreach inst_term $moved_inst_sinks {
+        puts $action_fh "  DRYRUN MOVE [dbGet $inst_term.name] -> $branch_net"
+      }
     }
     return [list 1 ""]
   }
@@ -460,8 +476,10 @@ proc ::mixed_tier_split::split_net_with_buffer {net_ptr driver_obj sinks_by_tier
     return [list 0 [format "eco_add_repeater_failed:%s" $eco_err]]
   }
 
-  foreach moved_pin $moved_pin_names {
-    puts $action_fh "  MOVE SINK $moved_pin -> $branch_net"
+  if {$CFG(detail_log)} {
+    foreach moved_pin $moved_pin_names {
+      puts $action_fh "  MOVE SINK $moved_pin -> $branch_net"
+    }
   }
 
   if {$CFG(verify_processed)} {
@@ -471,7 +489,9 @@ proc ::mixed_tier_split::split_net_with_buffer {net_ptr driver_obj sinks_by_tier
       ::mixed_tier_split::rollback_split $inst_name $branch_net $action_fh
       return [list 0 $verify_reason]
     }
-    puts $action_fh "  VERIFY_OK net=$net_name branch=$branch_net"
+    if {$CFG(detail_log)} {
+      puts $action_fh "  VERIFY_OK net=$net_name branch=$branch_net"
+    }
   }
 
   return [list 1 $branch_net]
@@ -482,6 +502,9 @@ proc ::mixed_tier_split::run {} {
   variable COUNTERS
   variable SKIP_REASONS
   variable PROCESSED_SPLITS
+  variable BUFFER_MASTER_CHOICES
+
+  set t_run_start [clock milliseconds]
 
   array set COUNTERS {
     candidate_nets       0
@@ -491,10 +514,20 @@ proc ::mixed_tier_split::run {} {
     processed_residual   0
     io_upper             0
     io_bottom            0
+    existing_split_bufs  0
   }
   array unset SKIP_REASONS
   array set SKIP_REASONS {}
   set PROCESSED_SPLITS {}
+  catch {array unset BUFFER_MASTER_CHOICES}
+  array set BUFFER_MASTER_CHOICES {}
+  set t_name_cache_start [clock milliseconds]
+  ::mixed_tier_split::init_name_cache
+  set t_name_cache_ms [expr {[clock milliseconds] - $t_name_cache_start}]
+
+  if {[info exists ::env(PIN3D_SPLIT_DETAIL_LOG)] && $::env(PIN3D_SPLIT_DETAIL_LOG) ne ""} {
+    set CFG(detail_log) [expr {$::env(PIN3D_SPLIT_DETAIL_LOG) ni {0 false FALSE off OFF no NO}}]
+  }
 
   foreach term [dbGet -e top.terms] {
     switch -- [tier_classify_term_ptr $term] {
@@ -511,7 +544,29 @@ proc ::mixed_tier_split::run {} {
   puts $action_fh "# Mixed-tier net split actions"
   puts $action_fh "# split_net_mode=enabled"
   puts $action_fh "# dry_run=$CFG(dry_run)"
+  puts $action_fh "# detail_log=$CFG(detail_log)"
+  puts $action_fh "# name_cache_ms=$t_name_cache_ms"
 
+  foreach inst_ptr [dbGet -e top.insts] {
+    set inst_name [dbGet $inst_ptr.name]
+    if {[string match "${CFG(inst_prefix)}*" $inst_name]} {
+      incr COUNTERS(existing_split_bufs)
+    }
+  }
+  puts $action_fh "# existing_split_bufs=$COUNTERS(existing_split_bufs)"
+  if {$COUNTERS(existing_split_bufs) > 0} {
+    puts $action_fh "# warning=input_already_contains_split_buffers"
+  }
+
+  set eco_batch_mode_enabled 0
+  if {!$CFG(dry_run) && [llength [info commands setEcoMode]]} {
+    if {![catch {setEcoMode -batchMode true}]} {
+      set eco_batch_mode_enabled 1
+      puts $action_fh "# eco_batch_mode=on"
+    }
+  }
+
+  set t_scan_start [clock milliseconds]
   foreach net_ptr [dbGet -e top.nets] {
     set net_name [dbGet $net_ptr.name]
     lassign [::mixed_tier_split::is_candidate_net $net_ptr] is_candidate reason
@@ -583,12 +638,22 @@ proc ::mixed_tier_split::run {} {
     incr COUNTERS(split_nets)
     lappend PROCESSED_SPLITS [list $net_name $split_result]
   }
+  set t_scan_ms [expr {[clock milliseconds] - $t_scan_start}]
 
+  set t_batch_close_start [clock milliseconds]
+  if {$eco_batch_mode_enabled} {
+    catch {setEcoMode -batchMode false}
+  }
+  set t_batch_close_ms [expr {[clock milliseconds] - $t_batch_close_start}]
+
+  set t_eco_place_start [clock milliseconds]
   if {!$CFG(dry_run) && $CFG(run_eco_place)} {
     ecoPlace
   }
+  set t_eco_place_ms [expr {[clock milliseconds] - $t_eco_place_start}]
 
-  if {$CFG(verify_processed)} {
+  set t_reverify_start [clock milliseconds]
+  if {$CFG(verify_processed) && $CFG(run_eco_place)} {
     foreach split_record $PROCESSED_SPLITS {
       lassign $split_record net_name branch_net_name
       set net_ptr [dbGet -e [dbGet -p top.nets.name $net_name]]
@@ -602,6 +667,8 @@ proc ::mixed_tier_split::run {} {
       }
     }
   }
+  set t_reverify_ms [expr {[clock milliseconds] - $t_reverify_start}]
+  set t_total_ms [expr {[clock milliseconds] - $t_run_start}]
 
   close $action_fh
 
@@ -615,6 +682,13 @@ proc ::mixed_tier_split::run {} {
   puts $summary_fh "processed_residual $COUNTERS(processed_residual)"
   puts $summary_fh "io_upper $COUNTERS(io_upper)"
   puts $summary_fh "io_bottom $COUNTERS(io_bottom)"
+  puts $summary_fh "existing_split_bufs $COUNTERS(existing_split_bufs)"
+  puts $summary_fh "name_cache_ms $t_name_cache_ms"
+  puts $summary_fh "scan_ms $t_scan_ms"
+  puts $summary_fh "batch_close_ms $t_batch_close_ms"
+  puts $summary_fh "eco_place_ms $t_eco_place_ms"
+  puts $summary_fh "reverify_ms $t_reverify_ms"
+  puts $summary_fh "total_ms $t_total_ms"
   puts $summary_fh ""
   puts $summary_fh "skip_reasons"
   foreach reason [lsort [array names SKIP_REASONS]] {
@@ -629,4 +703,6 @@ proc ::mixed_tier_split::run {} {
   puts "INFO:   skipped_nets=$COUNTERS(skipped_nets)"
   puts "INFO:   processed_residual=$COUNTERS(processed_residual)"
   puts "INFO:   io_upper=$COUNTERS(io_upper) io_bottom=$COUNTERS(io_bottom)"
+  puts "INFO:   existing_split_bufs=$COUNTERS(existing_split_bufs)"
+  puts "INFO:   split_timing name_cache_ms=$t_name_cache_ms scan_ms=$t_scan_ms batch_close_ms=$t_batch_close_ms eco_place_ms=$t_eco_place_ms reverify_ms=$t_reverify_ms total_ms=$t_total_ms"
 }
