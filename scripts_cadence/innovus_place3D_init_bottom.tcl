@@ -47,7 +47,7 @@ _report_allow_net_resolution "place-init-bottom" $requested_allow_net $effective
 apply_tier_policy bottom -fixlib 1 -allow_net $effective_allow_net
 
 pc::setup_basic
-pc::run_loop_opt_step init_bottom
+place_design
 
 pmu::set_all_tier_macros_fixed
 set_tier_placement_status upper placed
