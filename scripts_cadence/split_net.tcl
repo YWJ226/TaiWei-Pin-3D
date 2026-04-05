@@ -217,6 +217,37 @@ proc ::mixed_tier_split::choose_buffer_tier {driver_tier upper_count bottom_coun
   }
 }
 
+proc ::mixed_tier_split::buffer_drive_score {master_name} {
+  set score 999999
+  if {[regexp -nocase -- {[_x]([0-9]+)(?:_|$)} $master_name -> drive]} {
+    set score $drive
+  }
+  return $score
+}
+
+proc ::mixed_tier_split::next_power_of_two {value} {
+  if {$value <= 1} {
+    return 1
+  }
+  set power 1
+  while {$power < $value} {
+    set power [expr {$power * 2}]
+  }
+  return $power
+}
+
+proc ::mixed_tier_split::required_buffer_drive_score {moved_sink_count} {
+  set per_drive_unit 24
+  if {[info exists ::env(PIN3D_SPLIT_FANOUT_PER_DRIVE)] && $::env(PIN3D_SPLIT_FANOUT_PER_DRIVE) ne ""} {
+    set per_drive_unit $::env(PIN3D_SPLIT_FANOUT_PER_DRIVE)
+  }
+  if {$per_drive_unit < 1} {
+    set per_drive_unit 24
+  }
+  set units [expr {int(ceil(double(max($moved_sink_count, 1)) / double($per_drive_unit)))}]
+  return [::mixed_tier_split::next_power_of_two $units]
+}
+
 proc ::mixed_tier_split::master_io_summary {master_name} {
   set cell_ptr [dbGet -p head.libCells.name $master_name]
   if {$cell_ptr eq "0x0"} {
@@ -241,25 +272,42 @@ proc ::mixed_tier_split::master_io_summary {master_name} {
   return [list $in_cnt $out_cnt $in_term $out_term]
 }
 
-proc ::mixed_tier_split::choose_buffer_master {tier} {
-  set preferred [format "BUF_X1_%s" $tier]
-  foreach candidate [concat [list $preferred] [dbGet head.libCells.name]] {
-    if {$candidate eq ""} {
-      continue
+proc ::mixed_tier_split::choose_buffer_master {tier moved_sink_count} {
+  variable BUFFER_MASTER_CHOICES
+  if {![info exists BUFFER_MASTER_CHOICES($tier)]} {
+    set candidates {}
+    foreach candidate [dbGet head.libCells.name] {
+      if {$candidate eq ""} {
+        continue
+      }
+      if {![string match "BUF*_${tier}" $candidate]} {
+        continue
+      }
+      if {[string match "CLKBUF*_${tier}" $candidate] || [string match "TBUF*_${tier}" $candidate]} {
+        continue
+      }
+      lassign [::mixed_tier_split::master_io_summary $candidate] in_cnt out_cnt in_term out_term
+      if {$in_cnt == 1 && $out_cnt == 1 && $in_term ne "" && $out_term ne ""} {
+        lappend candidates [list [::mixed_tier_split::buffer_drive_score $candidate] $candidate $in_term $out_term]
+      }
     }
-    if {![string match "BUF*_${tier}" $candidate]} {
-      continue
-    }
-    if {[string match "CLKBUF*_${tier}" $candidate] || [string match "TBUF*_${tier}" $candidate]} {
-      continue
-    }
+    set BUFFER_MASTER_CHOICES($tier) [lsort -integer -index 0 [lsort -dictionary -index 1 $candidates]]
+  }
 
-    lassign [::mixed_tier_split::master_io_summary $candidate] in_cnt out_cnt in_term out_term
-    if {$in_cnt == 1 && $out_cnt == 1 && $in_term ne "" && $out_term ne ""} {
-      return [list $candidate $in_term $out_term]
+  set sorted $BUFFER_MASTER_CHOICES($tier)
+  if {[llength $sorted] == 0} {
+    return ""
+  }
+
+  set required_drive [::mixed_tier_split::required_buffer_drive_score $moved_sink_count]
+  foreach item $sorted {
+    if {[lindex $item 0] >= $required_drive} {
+      return [concat [lrange $item 1 end] [list [lindex $item 0] $required_drive]]
     }
   }
-  return ""
+
+  set largest [lindex $sorted end]
+  return [concat [lrange $largest 1 end] [list [lindex $largest 0] $required_drive]]
 }
 
 proc ::mixed_tier_split::object_label {obj_ptr} {
@@ -378,18 +426,19 @@ proc ::mixed_tier_split::split_net_with_buffer {net_ptr driver_obj sinks_by_tier
     return [list 0 "top_level_sink_rewire_not_supported"]
   }
 
-  set buffer_info [::mixed_tier_split::choose_buffer_master $buffer_tier]
+  set moved_sink_count [expr {[llength $moved_inst_sinks] + [llength $moved_term_sinks]}]
+  set buffer_info [::mixed_tier_split::choose_buffer_master $buffer_tier $moved_sink_count]
   if {$buffer_info eq ""} {
     return [list 0 "no_tier_buffer_master"]
   }
-  lassign $buffer_info buffer_master _ _
+  lassign $buffer_info buffer_master _ _ chosen_drive required_drive
 
   set existing_names [concat [dbGet top.nets.name] [dbGet top.insts.name]]
   set safe_net_name [::mixed_tier_split::sanitize_name_component $net_name]
   set inst_name [::mixed_tier_split::ensure_unique_name [format "%s_%s_%s" $CFG(inst_prefix) $buffer_tier $safe_net_name] $existing_names]
   set branch_net [::mixed_tier_split::ensure_unique_name [format "%s_%s_%s" $CFG(net_prefix) $buffer_tier $safe_net_name] $existing_names]
 
-  puts $action_fh "ACTION net=$net_name driver=[::mixed_tier_split::object_label $driver_obj] driver_tier=$driver_tier buffer_master=$buffer_master buffer_tier=$buffer_tier retained_tier=$retained_tier tier_reason=$tier_reason new_inst=$inst_name new_net=$branch_net"
+  puts $action_fh "ACTION net=$net_name driver=[::mixed_tier_split::object_label $driver_obj] driver_tier=$driver_tier buffer_master=$buffer_master buffer_tier=$buffer_tier retained_tier=$retained_tier tier_reason=$tier_reason moved_sink_count=$moved_sink_count chosen_drive=$chosen_drive required_drive=$required_drive new_inst=$inst_name new_net=$branch_net"
 
   if {$CFG(dry_run)} {
     foreach inst_term $moved_inst_sinks {

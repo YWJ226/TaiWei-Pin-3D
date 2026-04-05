@@ -83,7 +83,7 @@ if {$display_ok} {
     puts "WARN(OR): failed to write image : $err"
   }
 } else {
-  puts "INFO(OR): skip image output $img_out in headless mode"
+  puts "INFO(OR): skip image output in headless mode"
 }
 
 set VISUALIZE_FINAL [_get VISUALIZE_FINAL "0"]

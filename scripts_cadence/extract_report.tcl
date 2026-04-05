@@ -119,8 +119,45 @@ proc extract_wire_length {} {
 # Cross-tier reporting helpers
 # --------------------------
 proc _report_net_tier_presence {net_ptr} {
-  lassign [tier_net_presence_detail_counts $net_ptr] upper_count bottom_count io_count unknown_count
-  return [list [expr {$upper_count > 0}] [expr {$bottom_count > 0}] [expr {$io_count > 0}] [expr {$unknown_count > 0}]]
+  set has_upper 0
+  set has_bottom 0
+  set has_io 0
+  set has_unknown 0
+
+  # Top-level IO terms are first classified by their actual routed pin layers.
+  # Only ambiguous terms with no resolvable tier stay in the IO bucket.
+  foreach term [dbGet -e $net_ptr.terms] {
+    switch -- [tier_classify_term_ptr $term] {
+      upper {
+        set has_upper 1
+      }
+      bottom {
+        set has_bottom 1
+      }
+      default {
+        set has_io 1
+      }
+    }
+  }
+
+  foreach inst_term [dbGet -e $net_ptr.instTerms] {
+    switch -- [tier_classify_inst_term_ptr $inst_term] {
+      upper {
+        set has_upper 1
+      }
+      bottom {
+        set has_bottom 1
+      }
+      split_buffer {
+        continue
+      }
+      default {
+        set has_unknown 1
+      }
+    }
+  }
+
+  return [list $has_upper $has_bottom $has_io $has_unknown]
 }
 
 proc _cross_tier_category_from_presence {has_upper has_bottom has_io has_unknown} {
@@ -230,11 +267,14 @@ proc _report_is_clock_net_ptr {net_ptr} {
 # --------------------------
 # Cross Tier Net Count
 # Rule:
-#   - A net is cross-tier if it connects:
+#   - Top-level IO terms inherit upper/bottom tier when their placed pin layers
+#     resolve cleanly to one tier.
+#   - cross_tier_all is reserved for nets that truly span both tiers:
 #       1) upper + bottom
-#       2) upper + IO
-#       3) bottom + IO
-#       4) upper + bottom + IO
+#       2) upper + bottom + ambiguous IO
+#   - upper/bottom + ambiguous IO are still reported in the category breakdown,
+#     but they are not counted in cross_tier_all because they do not imply an
+#     upper-bottom bridge and therefore should not be compared against HBT count.
 # Options:
 #   -clock_only 1 : report only clock-related cross-tier nets
 # --------------------------
@@ -253,32 +293,8 @@ proc extract_cross_tier_net_stats {list_rpt_path args} {
   }
 
   set report_mode [_pin3d_metric_report_mode]
-  if {$report_mode eq "off"} {
-    if {$list_rpt_path ne ""} {
-      set fh [open $list_rpt_path w]
-      if {$opt(-clock_only)} {
-        puts $fh "# Clock-Only Cross-Tier Net Report"
-      } else {
-        puts $fh "# Cross-Tier Net Report"
-      }
-      puts $fh "# detail_omitted 1"
-      puts $fh "# report_mode off"
-      puts $fh ""
-      puts $fh "Total Cross-Tier Nets: 0"
-      puts $fh "Category Totals:"
-      foreach key {Upper_Bottom Upper_IO Bottom_IO Upper_Bottom_IO Unknown_Tier} {
-        puts $fh [format "  %-18s %d" $key 0]
-      }
-      close $fh
-    }
-    return [dict create \
-      cross_tier_all 0 \
-      upper_bottom 0 \
-      upper_io 0 \
-      bottom_io 0 \
-      upper_bottom_io 0 \
-      unknown 0]
-  }
+  set emit_detail [expr {$report_mode eq "full"}]
+  set emit_report [expr {$report_mode ne "off"}]
 
   set total_cross_tier 0
   array set category_counts {
@@ -295,12 +311,12 @@ proc extract_cross_tier_net_stats {list_rpt_path args} {
   } else {
     lappend report_lines "# Cross-Tier Net Report"
   }
-  if {$report_mode eq "full"} {
+  if {$emit_detail} {
     lappend report_lines [format "%-40s | %s" "Net Name" "Type"]
     lappend report_lines "-----------------------------------------|------------------"
   } else {
     lappend report_lines "# detail_omitted 1"
-    lappend report_lines "# report_mode summary"
+    lappend report_lines [format "# report_mode %s" [expr {$report_mode eq "off" ? "off" : "summary"}]]
   }
 
   foreach net [dbGet top.nets] {
@@ -312,11 +328,11 @@ proc extract_cross_tier_net_stats {list_rpt_path args} {
     set net_type [_cross_tier_category_from_presence $has_upper $has_bottom $has_io $has_unknown]
 
     if {$net_type ne ""} {
-      if {$net_type ne "Unknown_Tier"} {
+      if {$net_type in {"Upper_Bottom" "Upper_Bottom_IO"}} {
         incr total_cross_tier
       }
       incr category_counts($net_type)
-      if {$report_mode eq "full"} {
+      if {$emit_detail} {
         lappend report_lines [format "%-40s | %s" [dbGet $net.name] $net_type]
       }
     }
@@ -329,7 +345,7 @@ proc extract_cross_tier_net_stats {list_rpt_path args} {
     lappend report_lines [format "  %-18s %d" $key $category_counts($key)]
   }
 
-  if {$list_rpt_path ne ""} {
+  if {$list_rpt_path ne "" && $emit_report} {
     set fh [open $list_rpt_path w]
     foreach line $report_lines {
       puts $fh $line
@@ -627,8 +643,8 @@ proc extract_report {args} {
     puts $fh [format "%-26s %s" "V Congestion"           [lindex $f 9]]
     puts $fh [format "%-26s %s" "DRC Violations"         [lindex $f 10]]
     puts $fh [format "%-26s %s" "FEP Violations"         [lindex $f 11]]
-    puts $fh [format "%-26s %s" "HB VIA Count (Phys)"    [lindex $f 12]]
-    puts $fh [format "%-26s %s" "Cross-Tier Nets (All)"  [lindex $f 13]]
+    puts $fh [format "%-26s %s" "HB VIA Count (Phys)"         [lindex $f 12]]
+    puts $fh [format "%-26s %s" "Cross-Tier Nets (U/B only)" [lindex $f 13]]
     puts $fh ""
     puts $fh "=== Cross-Tier Breakdown ==="
     puts $fh [format "%-26s %s" "Upper_Bottom"           [lindex $f 14]]
