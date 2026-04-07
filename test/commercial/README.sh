@@ -130,7 +130,7 @@ run_make cds-cts
 
 # input: 4_cts.def/.v/.sdc
 # output: 5_route.def/.v/.sdc
-run_make cds-route-new
+run_make cds-route
 
 # input: routed database
 # output: final_summary.txt, final_metrics.csv, restored final views
