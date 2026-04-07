@@ -23,7 +23,7 @@ export CORE_ASPECT_RATIO = 1
 export CORE_MARGIN = 5
 export PLACE_DENSITY_LB_ADDON = 0.08
 export TNS_END_PERCENT        = 100
-export DETAILED_ROUTE_END_ITERATION = 15
+export DETAILED_ROUTE_END_ITERATION = 20
 export GLOBAL_ROUTE_ARGS = -verbose -congestion_iterations 30
 
 export MACRO_PLACE_HALO = 1 1

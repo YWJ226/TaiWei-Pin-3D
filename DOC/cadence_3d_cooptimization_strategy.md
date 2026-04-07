@@ -398,6 +398,32 @@ There are two independent high-level switches:
 
 `PIN3D_SPLIT_NET_FLOW` changes whether the split stage actually inserts split buffers and rewrites the post-IO handoff, or stays as a pass-through report-only stage.
 
+The current Cadence split-net stage uses the same cost-based tier selection policy as the OpenROAD split stage. It no longer chooses the split-buffer tier only by heavier fanout, and it no longer assumes that the opposite-of-driver side is always best.
+
+For each legal mixed-fanout signal net, the stage evaluates placing a regular tier-local `BUF*` on `upper` and on `bottom`. The selected tier moves that tier's sinks behind the branch net, while the opposite tier's sinks remain on the original net. Existing clock, PG, special-net, unsupported driver and unsupported top-level sink rewiring skips remain in place, and successful splits must leave both the original net and branch net `mixed_fanout`-pure.
+
+The decision score is:
+
+```text
+score(t) = w_util * util_penalty(t) + w_hbt * hbt_penalty(t) + w_area * buffer_area_penalty(t)
+```
+
+Default parameters are `u_safe=0.60`, `alpha=12.0`, `w_util=1.0`, `w_hbt=2.5`, `w_area=400.0`, high-util forbid threshold `0.80`, and near-tie threshold `5%`. The utilization term is exponential above `u_safe`, so high-util tiers are penalized sharply. The HBT term uses `estimated_extra_hbt`, not actual routed HBT count:
+
+- if `buffer_tier != driver_tier`, `estimated_extra_hbt = 1`
+- if `buffer_tier == driver_tier`, `estimated_extra_hbt = retained_opposite_tier_sink_count`
+- `hbt_penalty = log2(1 + estimated_extra_hbt)`
+
+The area term uses the chosen split buffer master area normalized by the current
+core area:
+
+- `buffer_area_penalty = chosen_buffer_area / core_area`
+
+This intentionally makes the area term more visible on very small designs,
+where a few added buffers can perturb density much more than on large designs.
+
+This HBT value is only a split-decision cost proxy. It should not be interpreted as final physical HBT usage after route. Cadence estimates tier utilization once per split run from tier-classified instance area divided by the current core area, then reuses that global value for all candidate nets. The area term reuses the same core area and the chosen candidate buffer master area.
+
 This is the main mechanism used in the current commercial comparison experiments.
 
 ### 6.5 PreCTS optimization is intentionally staged and iterative

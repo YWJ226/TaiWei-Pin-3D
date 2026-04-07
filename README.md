@@ -112,7 +112,7 @@ The key strategies are:
 
 - **Unified 2D abstraction for F2F 3D**: hybrid bonding terminals (HBTs) are modeled as special vias in an extended metal stack, so existing 2D routers can realize cross-tier connections without a custom 3D router.
 - **Tier-specific library views**: every physical cell has tier-local masters such as `*_bottom` and `*_upper`, and both OpenROAD and Cadence use COVER views to hide the inactive tier from local optimization while preserving logical connectivity.
-- **Mixed-fanout split before detailed optimization**: the flow explicitly identifies nets whose real sinks span both tiers, inserts a tier-local split buffer to isolate one sink cluster, and converts one mixed-fanout net into two tier-pure fanout nets whenever possible.
+- **Mixed-fanout split before detailed optimization**: the flow explicitly identifies nets whose real sinks span both tiers, inserts a tier-local split buffer to isolate one sink cluster, and converts one mixed-fanout net into two tier-pure fanout nets whenever possible. The buffer tier is selected with a lightweight cost model that penalizes high-util tiers and choices with higher estimated split-side HBT burden.
 - **Tier-by-tier optimization instead of flat 3D optimization**: placement and legalization alternate between the upper and bottom tiers, with explicit tier policy, row/site rebuilding, and stage-specific active-tier control.
 - **Split PDN and staged CTS**: PDN is built separately for bottom and upper tiers, and CTS is structured as owner-tree plus receive-side optimization instead of a single flat 3D clock stage.
 - **3D-specific observability**: the flow reports both structural `cross-tier` nets and functional `mixed_fanout` nets, because these are different quantities and they must be tracked separately during 3D optimization.
@@ -159,7 +159,7 @@ The following figure presents an overview of our homogeneous and heterogeneous P
 
 - **2D bootstrap**: RTL is synthesized, floorplanned and partitioned in 2D to generate the initial tier assignment.
 - **3D floorplan and IO construction**: the partitioned design is converted into a tier-aware 3D view with tier-local libraries, tier-local PDN intent and HBT-capable routing resources.
-- **Mixed-fanout split stage**: before the main physical optimization loop, the flow isolates opposite-tier sink clusters so later optimization works on cleaner tier-local fanout structure.
+- **Mixed-fanout split stage**: before the main physical optimization loop, the flow isolates one tier's sink cluster so later optimization works on cleaner tier-local fanout structure. The current split policy evaluates upper and bottom buffer placement using three lightweight terms: global tier utilization, an `estimated_extra_hbt` proxy, and the inserted buffer area normalized by the current core area. The HBT proxy is not the final routed HBT count.
 - **Iterative 3D placement and legalization**: the flow alternates active optimization between upper and bottom tiers instead of optimizing both tiers blindly in one flat pass.
 - **Staged 3D CTS**: the clock tree is first built from an owner tier view and then refined from the receive side.
 - **3D route and final extraction**: routing uses the merged 3D stack, then timing, power, DRC and cross-tier reports are collected from final outputs.
@@ -188,7 +188,7 @@ This distinction is important because a split operation may keep one controlled 
 | **3D Prep (views)**     | `ord-pre`                  | `cds-pre`                  | Import partition artifacts and build 3D logical views.       |
 | **3D Floorplan**        | `ord-3d-floorplan`         | `cds-3d-floorplan`         | Build tier-aware floorplan from the partitioned design.      |
 | **3D IO**               | `ord-3d-io`                | `cds-3d-io`                | Tier-aware IO/pin placement.                                 |
-| **Split Mixed Fanout**  | `ord-3d-split-net`         | `cds-3d-split-net`         | Split opposite-tier sink clusters before main optimization.  |
+| **Split Mixed Fanout**  | `ord-3d-split-net`         | `cds-3d-split-net`         | Split mixed-fanout nets with cost-based buffer tier selection before main optimization. |
 | **Macro Place — Upper** | `ord-place-macro-upper`    | `cds-place-macro-upper`    | Place upper-tier macros with inactive-tier abstraction.      |
 | **Macro Place — Bottom**| `ord-place-macro-bottom`   | `cds-place-macro-bottom`   | Place bottom-tier macros and merge handoff.                  |
 | **3D PDN**              | `ord-3d-pdn-only`          | `cds-3d-pdn-only`          | Runs bottom PDN then upper PDN explicitly.                   |
@@ -244,5 +244,3 @@ If your research, products or publications benefit from this repository, we kind
 
 ## References
 [1] L. Jiang, A. B. Kahng, Z. Wang*, Z. Zheng, "Invited: Toward Sustainable and Transparent Benchmarking for Academic Physical Design Research", Proc. ISPD, 2026.
-
-

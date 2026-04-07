@@ -24,6 +24,7 @@ namespace eval ::tier_split_or2 {
   variable INST_TIER_CACHE
   variable ITERM_TIER_CACHE
   variable BTERM_TIER_CACHE
+  variable TIER_UTILIZATION
   array set CFG {
     split_y_um               0.0
     use_bbox_split           1
@@ -51,6 +52,13 @@ namespace eval ::tier_split_or2 {
     require_both_sink_tiers  1
     skip_port_driven_nets    1
     skip_clock_nets          1
+    util_safe                0.60
+    util_alpha               12.0
+    util_weight              1.0
+    hbt_weight               2.5
+    area_weight              400.0
+    high_util_forbid         0.8
+    near_tie_ratio           0.05
   }
   array set NAME_SET {}
   array set MASTER_LOOKUP {}
@@ -58,6 +66,7 @@ namespace eval ::tier_split_or2 {
   array set INST_TIER_CACHE {}
   array set ITERM_TIER_CACHE {}
   array set BTERM_TIER_CACHE {}
+  set TIER_UTILIZATION {}
 }
 
 

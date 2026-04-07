@@ -26,9 +26,9 @@ proc ::tier_split_or2::cleanup_failed_split {net moved_inst_sinks branch_net_nam
   }
 }
 
-proc ::tier_split_or2::build_split_record {net driver_iterm buffer_tier retained_tier buffer_master_name buffer_inst_name branch_net_name moved_inst_sinks retained_inst_sinks} {
+proc ::tier_split_or2::build_split_record {net driver_iterm buffer_tier retained_tier buffer_master_name buffer_inst_name branch_net_name moved_inst_sinks retained_inst_sinks {decision_info {}}} {
   set driver_tier [::tier_split_or2::classify_iterm $driver_iterm]
-  return [dict create \
+  set record [dict create \
     original_net [$net getName] \
     branch_net $branch_net_name \
     split_inst $buffer_inst_name \
@@ -39,6 +39,33 @@ proc ::tier_split_or2::build_split_record {net driver_iterm buffer_tier retained
     driver_pin [::tier_split_or2::iterm_full_name $driver_iterm] \
     moved_sinks [::tier_split_or2::iterm_name_list $moved_inst_sinks] \
     retained_sinks [::tier_split_or2::iterm_name_list $retained_inst_sinks]]
+  if {$decision_info ne "" && [dict exists $decision_info upper] && [dict exists $decision_info bottom]} {
+    set upper [dict get $decision_info upper]
+    set bottom [dict get $decision_info bottom]
+    if {[dict exists $decision_info selection_reason]} {
+      dict set record selection_reason [dict get $decision_info selection_reason]
+    }
+    dict set record score_upper [dict get $upper score]
+    dict set record score_bottom [dict get $bottom score]
+    dict set record util_upper [dict get $upper util]
+    dict set record util_bottom [dict get $bottom util]
+    dict set record p_util_upper [dict get $upper p_util]
+    dict set record p_util_bottom [dict get $bottom p_util]
+    dict set record estimated_extra_hbt_upper [dict get $upper estimated_extra_hbt]
+    dict set record estimated_extra_hbt_bottom [dict get $bottom estimated_extra_hbt]
+    dict set record p_hbt_upper [dict get $upper p_hbt]
+    dict set record p_hbt_bottom [dict get $bottom p_hbt]
+    dict set record buffer_master_candidate_upper [dict get $upper buffer_master]
+    dict set record buffer_master_candidate_bottom [dict get $bottom buffer_master]
+    dict set record buffer_area_upper [dict get $upper buffer_area]
+    dict set record buffer_area_bottom [dict get $bottom buffer_area]
+    dict set record core_area [dict get $upper core_area]
+    dict set record p_area_upper [dict get $upper p_area]
+    dict set record p_area_bottom [dict get $bottom p_area]
+    dict set record high_util_forbid_upper [dict get $upper high_util_forbid]
+    dict set record high_util_forbid_bottom [dict get $bottom high_util_forbid]
+  }
+  return $record
 }
 
 proc ::tier_split_or2::name_matches_any {name patterns} {
@@ -296,6 +323,7 @@ proc ::tier_split_or2::choose_buffer_master {tier moved_sink_count} {
   if {![info exists BUFFER_MASTER_CHOICES($tier)]} {
     set candidates {}
     set db [ord::get_db]
+    set dbu [::tier_split_or2::dbu_per_um]
     foreach lib [::odb::dbDatabase_getLibs $db] {
       foreach master [::odb::dbLib_getMasters $lib] {
         set master_name [$master getName]
@@ -319,7 +347,7 @@ proc ::tier_split_or2::choose_buffer_master {tier moved_sink_count} {
         }
         lassign [::tier_split_or2::master_io_summary $master] in_cnt out_cnt input_term output_term
         if {$in_cnt == 1 && $out_cnt == 1 && $input_term ne "" && $output_term ne ""} {
-          lappend candidates [list [::tier_split_or2::buffer_drive_score $master_name] $master_name $input_term $output_term]
+          lappend candidates [list [::tier_split_or2::buffer_drive_score $master_name] $master_name $input_term $output_term [::tier_split_or2::master_area_um2 $master $dbu]]
         }
       }
     }
@@ -481,27 +509,282 @@ proc ::tier_split_or2::collect_sinks_by_tier {net} {
     unknown $unknown_sinks]
 }
 
-proc ::tier_split_or2::choose_buffer_tier {driver_tier upper_inst_count bottom_inst_count} {
-  set opposite_tier [::tier_split_or2::opposite_tier $driver_tier]
-  switch -- $opposite_tier {
-    upper {
-      if {$upper_inst_count > 0} {
-        return [list upper opposite_driver_tier]
-      }
-      return [list "" no_supported_upper_instance_sinks]
-    }
-    bottom {
-      if {$bottom_inst_count > 0} {
-        return [list bottom opposite_driver_tier]
-      }
-      return [list "" no_supported_bottom_instance_sinks]
-    }
-    default {
-      return [list "" driver_tier_unknown]
-    }
+proc ::tier_split_or2::numeric_or_zero {value} {
+  if {[catch {expr {double($value)}} result]} {
+    return 0.0
   }
+  return $result
 }
 
+proc ::tier_split_or2::master_area_um2 {master dbu} {
+  if {$master eq "" || $master eq "NULL"} {
+    return 0.0
+  }
+  if {[catch {set w [$master getWidth]}] || [catch {set h [$master getHeight]}]} {
+    return 0.0
+  }
+  return [expr {double($w) * double($h) / double($dbu * $dbu)}]
+}
+
+proc ::tier_split_or2::compute_tier_global_utilization {block} {
+  variable TIER_UTILIZATION
+  if {$TIER_UTILIZATION ne ""} {
+    return $TIER_UTILIZATION
+  }
+
+  set dbu [::tier_split_or2::dbu_per_um]
+  lassign [ord::get_die_area] die_lx die_ly die_ux die_uy
+  set margin 0.0
+  if {[info exists ::env(CORE_MARGIN)] && $::env(CORE_MARGIN) ne ""} {
+    set margin [::tier_split_or2::numeric_or_zero $::env(CORE_MARGIN)]
+  }
+  set width [expr {max(0.0, double($die_ux) - double($die_lx) - 2.0 * $margin)}]
+  set height [expr {max(0.0, double($die_uy) - double($die_ly) - 2.0 * $margin)}]
+  set core_area [expr {$width * $height}]
+
+  set upper_area 0.0
+  set bottom_area 0.0
+  set upper_count 0
+  set bottom_count 0
+  foreach inst [$block getInsts] {
+    set tier [::tier_split_or2::classify_inst $inst]
+    if {$tier ni {upper bottom}} {
+      continue
+    }
+    set area [::tier_split_or2::master_area_um2 [$inst getMaster] $dbu]
+    if {$tier eq "upper"} {
+      set upper_area [expr {$upper_area + $area}]
+      incr upper_count
+    } else {
+      set bottom_area [expr {$bottom_area + $area}]
+      incr bottom_count
+    }
+  }
+
+  set util_upper 0.0
+  set util_bottom 0.0
+  set total_cell_area [expr {$upper_area + $bottom_area}]
+  if {$core_area > 0.0} {
+    set util_upper [expr {$upper_area / $core_area}]
+    set util_bottom [expr {$bottom_area / $core_area}]
+  }
+  set TIER_UTILIZATION [dict create \
+    upper $util_upper \
+    bottom $util_bottom \
+    upper_area $upper_area \
+    bottom_area $bottom_area \
+    total_cell_area $total_cell_area \
+    upper_count $upper_count \
+    bottom_count $bottom_count \
+    core_area $core_area \
+    method "master_area_over_core_area"]
+  return $TIER_UTILIZATION
+}
+
+proc ::tier_split_or2::util_penalty {util} {
+  variable CFG
+  set util [::tier_split_or2::numeric_or_zero $util]
+  if {$util <= $CFG(util_safe)} {
+    return 0.0
+  }
+  return [expr {exp(double($CFG(util_alpha)) * ($util - double($CFG(util_safe)))) - 1.0}]
+}
+
+proc ::tier_split_or2::estimated_extra_hbt {candidate_tier driver_tier retained_opposite_tier_sink_count} {
+  if {$candidate_tier ne $driver_tier} {
+    return 1
+  }
+  return $retained_opposite_tier_sink_count
+}
+
+proc ::tier_split_or2::hbt_penalty {estimated_extra_hbt} {
+  return [expr {log(1.0 + double($estimated_extra_hbt)) / log(2.0)}]
+}
+
+proc ::tier_split_or2::buffer_area_penalty {buffer_area core_area} {
+  set buffer_area [::tier_split_or2::numeric_or_zero $buffer_area]
+  set core_area [::tier_split_or2::numeric_or_zero $core_area]
+  if {$buffer_area <= 0.0 || $core_area <= 0.0} {
+    return 0.0
+  }
+  return [expr {$buffer_area / $core_area}]
+}
+
+proc ::tier_split_or2::candidate_feasibility {candidate_tier upper_inst_count bottom_inst_count upper_term_count bottom_term_count} {
+  if {$candidate_tier eq "upper"} {
+    if {$upper_inst_count <= 0 && $upper_term_count <= 0} {
+      return [list 0 no_supported_upper_sinks]
+    }
+    if {$upper_term_count > 0} {
+      return [list 0 top_level_upper_sink_rewire_not_supported]
+    }
+  } else {
+    if {$bottom_inst_count <= 0 && $bottom_term_count <= 0} {
+      return [list 0 no_supported_bottom_sinks]
+    }
+    if {$bottom_term_count > 0} {
+      return [list 0 top_level_bottom_sink_rewire_not_supported]
+    }
+  }
+  return [list 1 ""]
+}
+
+proc ::tier_split_or2::evaluate_buffer_tier_score {block candidate_tier driver_tier upper_inst_count bottom_inst_count upper_term_count bottom_term_count} {
+  variable CFG
+  set tier_util [::tier_split_or2::compute_tier_global_utilization $block]
+  set util [dict get $tier_util $candidate_tier]
+  set p_util [::tier_split_or2::util_penalty $util]
+  set core_area [dict get $tier_util core_area]
+  if {$candidate_tier eq "upper"} {
+    set retained_opposite_count [expr {$bottom_inst_count + $bottom_term_count}]
+    set moved_sink_count [expr {$upper_inst_count + $upper_term_count}]
+  } else {
+    set retained_opposite_count [expr {$upper_inst_count + $upper_term_count}]
+    set moved_sink_count [expr {$bottom_inst_count + $bottom_term_count}]
+  }
+  set estimated_extra_hbt [::tier_split_or2::estimated_extra_hbt $candidate_tier $driver_tier $retained_opposite_count]
+  set p_hbt [::tier_split_or2::hbt_penalty $estimated_extra_hbt]
+  lassign [::tier_split_or2::candidate_feasibility $candidate_tier $upper_inst_count $bottom_inst_count $upper_term_count $bottom_term_count] feasible infeasible_reason
+  set buffer_master ""
+  set buffer_area 0.0
+  if {$feasible} {
+    set buffer_info [::tier_split_or2::choose_buffer_master $candidate_tier $moved_sink_count]
+    if {$buffer_info eq ""} {
+      set feasible 0
+      set infeasible_reason no_tier_buffer_master
+    } else {
+      lassign $buffer_info buffer_master _ _ buffer_area _ _
+    }
+  }
+  set p_area [::tier_split_or2::buffer_area_penalty $buffer_area $core_area]
+  set score [expr {double($CFG(util_weight)) * $p_util + double($CFG(hbt_weight)) * $p_hbt + double($CFG(area_weight)) * $p_area}]
+  set forbidden [expr {$util >= double($CFG(high_util_forbid))}]
+  return [dict create \
+    tier $candidate_tier \
+    score $score \
+    util $util \
+    p_util $p_util \
+    estimated_extra_hbt $estimated_extra_hbt \
+    p_hbt $p_hbt \
+    buffer_master $buffer_master \
+    buffer_area $buffer_area \
+    core_area $core_area \
+    p_area $p_area \
+    feasible $feasible \
+    infeasible_reason $infeasible_reason \
+    high_util_forbid $forbidden]
+}
+
+proc ::tier_split_or2::prefer_score_record {upper_eval bottom_eval driver_tier} {
+  variable CFG
+  set upper_feasible [dict get $upper_eval feasible]
+  set bottom_feasible [dict get $bottom_eval feasible]
+  if {!$upper_feasible && !$bottom_feasible} {
+    return [list "" no_supported_instance_sinks]
+  }
+  if {$upper_feasible && !$bottom_feasible} {
+    return [list upper only_upper_feasible]
+  }
+  if {$bottom_feasible && !$upper_feasible} {
+    return [list bottom only_bottom_feasible]
+  }
+
+  set upper_forbidden [dict get $upper_eval high_util_forbid]
+  set bottom_forbidden [dict get $bottom_eval high_util_forbid]
+  if {$upper_forbidden && !$bottom_forbidden} {
+    return [list bottom upper_high_util_guard]
+  }
+  if {$bottom_forbidden && !$upper_forbidden} {
+    return [list upper bottom_high_util_guard]
+  }
+
+  set score_upper [dict get $upper_eval score]
+  set score_bottom [dict get $bottom_eval score]
+  set min_score [expr {($score_upper < $score_bottom) ? $score_upper : $score_bottom}]
+  set diff [expr {abs($score_upper - $score_bottom)}]
+  if {$min_score <= 1.0e-12} {
+    set near_tie [expr {$diff < double($CFG(near_tie_ratio))}]
+  } else {
+    set near_tie [expr {($diff / $min_score) < double($CFG(near_tie_ratio))}]
+  }
+  if {!$near_tie} {
+    if {$score_upper <= $score_bottom} {
+      return [list upper lower_score]
+    }
+    return [list bottom lower_score]
+  }
+
+  set p_util_upper [dict get $upper_eval p_util]
+  set p_util_bottom [dict get $bottom_eval p_util]
+  if {$p_util_upper < $p_util_bottom} {
+    return [list upper near_tie_lower_util_penalty]
+  }
+  if {$p_util_bottom < $p_util_upper} {
+    return [list bottom near_tie_lower_util_penalty]
+  }
+
+  set hbt_upper [dict get $upper_eval estimated_extra_hbt]
+  set hbt_bottom [dict get $bottom_eval estimated_extra_hbt]
+  if {$hbt_upper < $hbt_bottom} {
+    return [list upper near_tie_lower_estimated_extra_hbt]
+  }
+  if {$hbt_bottom < $hbt_upper} {
+    return [list bottom near_tie_lower_estimated_extra_hbt]
+  }
+
+  set p_area_upper [dict get $upper_eval p_area]
+  set p_area_bottom [dict get $bottom_eval p_area]
+  if {$p_area_upper < $p_area_bottom} {
+    return [list upper near_tie_lower_area_penalty]
+  }
+  if {$p_area_bottom < $p_area_upper} {
+    return [list bottom near_tie_lower_area_penalty]
+  }
+
+  set opposite [::tier_split_or2::opposite_tier $driver_tier]
+  if {$opposite in {upper bottom}} {
+    return [list $opposite near_tie_opposite_driver_tier]
+  }
+  return [list upper near_tie_lexical_upper]
+}
+
+proc ::tier_split_or2::choose_buffer_tier {block driver_tier upper_inst_count bottom_inst_count upper_term_count bottom_term_count} {
+  if {$driver_tier ni {upper bottom}} {
+    return [list "" driver_tier_unknown [dict create]]
+  }
+  set upper_eval [::tier_split_or2::evaluate_buffer_tier_score $block upper $driver_tier $upper_inst_count $bottom_inst_count $upper_term_count $bottom_term_count]
+  set bottom_eval [::tier_split_or2::evaluate_buffer_tier_score $block bottom $driver_tier $upper_inst_count $bottom_inst_count $upper_term_count $bottom_term_count]
+  lassign [::tier_split_or2::prefer_score_record $upper_eval $bottom_eval $driver_tier] tier reason
+  return [list $tier $reason [dict create upper $upper_eval bottom $bottom_eval selection_reason $reason]]
+}
+
+proc ::tier_split_or2::format_decision_fields {decision} {
+  if {$decision eq "" || ![dict exists $decision upper] || ![dict exists $decision bottom]} {
+    return ""
+  }
+  set upper [dict get $decision upper]
+  set bottom [dict get $decision bottom]
+  return [format "score_upper=%.6g score_bottom=%.6g util_upper=%.6g util_bottom=%.6g p_util_upper=%.6g p_util_bottom=%.6g estimated_extra_hbt_upper=%d estimated_extra_hbt_bottom=%d p_hbt_upper=%.6g p_hbt_bottom=%.6g buffer_master_upper=%s buffer_master_bottom=%s buffer_area_upper=%.6g buffer_area_bottom=%.6g core_area=%.6g p_area_upper=%.6g p_area_bottom=%.6g high_util_forbid_upper=%d high_util_forbid_bottom=%d" \
+    [dict get $upper score] \
+    [dict get $bottom score] \
+    [dict get $upper util] \
+    [dict get $bottom util] \
+    [dict get $upper p_util] \
+    [dict get $bottom p_util] \
+    [dict get $upper estimated_extra_hbt] \
+    [dict get $bottom estimated_extra_hbt] \
+    [dict get $upper p_hbt] \
+    [dict get $bottom p_hbt] \
+    [dict get $upper buffer_master] \
+    [dict get $bottom buffer_master] \
+    [dict get $upper buffer_area] \
+    [dict get $bottom buffer_area] \
+    [dict get $upper core_area] \
+    [dict get $upper p_area] \
+    [dict get $bottom p_area] \
+    [dict get $upper high_util_forbid] \
+    [dict get $bottom high_util_forbid]]
+}
 proc ::tier_split_or2::sanitize_name_component {name} {
   regsub -all {[^A-Za-z0-9_]} $name "_" clean_name
   return $clean_name
@@ -606,7 +889,9 @@ proc ::tier_split_or2::split_net_with_buffer {block net driver_info sinks_by_tie
   set driver_tier [::tier_split_or2::classify_iterm $driver_obj]
   set upper_inst_count [llength $upper_inst_sinks]
   set bottom_inst_count [llength $bottom_inst_sinks]
-  lassign [::tier_split_or2::choose_buffer_tier $driver_tier $upper_inst_count $bottom_inst_count] buffer_tier tier_reason
+  set upper_term_count [llength $upper_term_sinks]
+  set bottom_term_count [llength $bottom_term_sinks]
+  lassign [::tier_split_or2::choose_buffer_tier $block $driver_tier $upper_inst_count $bottom_inst_count $upper_term_count $bottom_term_count] buffer_tier tier_reason decision
   if {$buffer_tier eq ""} {
     ::tier_split_or2::record_skip $fp $net_name $tier_reason "driver_tier=$driver_tier"
     return [list 0 $tier_reason ""]
@@ -642,7 +927,7 @@ proc ::tier_split_or2::split_net_with_buffer {block net driver_info sinks_by_tie
     ::tier_split_or2::record_skip $fp $net_name "no_tier_buffer_master" "buffer_tier=$buffer_tier"
     return [list 0 "no_tier_buffer_master"]
   }
-  lassign $buffer_info buffer_master_name buffer_in_pin buffer_out_pin chosen_drive required_drive
+  lassign $buffer_info buffer_master_name buffer_in_pin buffer_out_pin buffer_area chosen_drive required_drive
   set buffer_master [::tier_split_or2::find_master_by_name $buffer_master_name]
   if {$buffer_master eq ""} {
     ::tier_split_or2::record_skip $fp $net_name "buffer_master_lookup_failed" "buffer_master=$buffer_master_name"
@@ -653,13 +938,14 @@ proc ::tier_split_or2::split_net_with_buffer {block net driver_info sinks_by_tie
   set inst_name [::tier_split_or2::ensure_unique_name $block "${safe_net_name}$CFG(buffer_inst_suffix)_${buffer_tier}"]
   set branch_net_name [::tier_split_or2::ensure_unique_name $block "${safe_net_name}$CFG(branch_net_suffix)_${buffer_tier}"]
 
-  puts $fp "ACTION net=$net_name driver=[::tier_split_or2::object_label $driver_kind $driver_obj] driver_tier=$driver_tier selection=$tier_reason buffer_master=$buffer_master_name buffer_tier=$buffer_tier retained_tier=$retained_tier moved_sink_count=$moved_sink_count chosen_drive=$chosen_drive required_drive=$required_drive new_inst=$inst_name new_net=$branch_net_name"
+  set decision_fields [::tier_split_or2::format_decision_fields $decision]
+  puts $fp "ACTION net=$net_name driver=[::tier_split_or2::object_label $driver_kind $driver_obj] driver_tier=$driver_tier selection=$tier_reason chosen_tier=$buffer_tier $decision_fields buffer_master=$buffer_master_name buffer_area=$buffer_area buffer_tier=$buffer_tier retained_tier=$retained_tier moved_sink_count=$moved_sink_count chosen_drive=$chosen_drive required_drive=$required_drive new_inst=$inst_name new_net=$branch_net_name"
 
   if {$CFG(dry_run)} {
     foreach sink $moved_inst_sinks {
       puts $fp "  DRYRUN MOVE [::tier_split_or2::iterm_full_name $sink] -> $branch_net_name"
     }
-    set dry_record [::tier_split_or2::build_split_record $net $driver_obj $buffer_tier $retained_tier $buffer_master_name $inst_name $branch_net_name $moved_inst_sinks $retained_inst_sinks]
+    set dry_record [::tier_split_or2::build_split_record $net $driver_obj $buffer_tier $retained_tier $buffer_master_name $inst_name $branch_net_name $moved_inst_sinks $retained_inst_sinks $decision]
     return [list 1 "" $dry_record]
   }
 
@@ -700,7 +986,7 @@ proc ::tier_split_or2::split_net_with_buffer {block net driver_info sinks_by_tie
   }
 
   ::tier_split_or2::remember_created_split_objects $buffer_inst $branch_net $buffer_in_it $buffer_out_it $moved_inst_sinks
-  set record [::tier_split_or2::build_split_record $net $driver_obj $buffer_tier $retained_tier $buffer_master_name $inst_name $branch_net_name $moved_inst_sinks $retained_inst_sinks]
+  set record [::tier_split_or2::build_split_record $net $driver_obj $buffer_tier $retained_tier $buffer_master_name $inst_name $branch_net_name $moved_inst_sinks $retained_inst_sinks $decision]
   set verify_status [::tier_split_or2::fast_verify_inserted_split $net $driver_obj $buffer_in_it $buffer_out_it $branch_net $moved_inst_sinks $retained_inst_sinks]
   set verify_state [dict get $verify_status status]
   if {$verify_state ne "valid"} {
@@ -718,17 +1004,22 @@ proc ::tier_split_or2::run {} {
   variable INST_TIER_CACHE
   variable ITERM_TIER_CACHE
   variable BTERM_TIER_CACHE
+  variable TIER_UTILIZATION
   set block [ord::get_db_block]
   _pin3d_rebuild_name_caches
   array unset INST_TIER_CACHE
   array unset ITERM_TIER_CACHE
   array unset BTERM_TIER_CACHE
+  set TIER_UTILIZATION {}
+  set tier_util [::tier_split_or2::compute_tier_global_utilization $block]
   set fp [open $CFG(report_file) w]
 
   puts $fp "# tier_split_or2"
   puts $fp "# mode=regular_buffer_split"
   puts $fp "# dry_run=$CFG(dry_run)"
   puts $fp "# split_y_um=$CFG(split_y_um)"
+  puts $fp "# tier_utilization method=[dict get $tier_util method] core_area=[dict get $tier_util core_area] util_upper=[dict get $tier_util upper] util_bottom=[dict get $tier_util bottom] area_upper=[dict get $tier_util upper_area] area_bottom=[dict get $tier_util bottom_area] total_cell_area=[dict get $tier_util total_cell_area]"
+  puts $fp "# cost_policy util_safe=$CFG(util_safe) util_alpha=$CFG(util_alpha) util_weight=$CFG(util_weight) hbt_weight=$CFG(hbt_weight) area_weight=$CFG(area_weight) high_util_forbid=$CFG(high_util_forbid) near_tie_ratio=$CFG(near_tie_ratio)"
   puts $fp ""
 
   if {$CFG(dump_cell_tier)} {
@@ -844,6 +1135,10 @@ proc ::tier_split_or2::run {} {
   puts $fp "# mixed_fanout_nets=$mixed_tier_nets"
   puts $fp "# candidate_nets=$candidate_nets"
   puts $fp "# processed_residual=[expr {$candidate_nets - $split_cnt}]"
+  puts $fp "# util_upper=[dict get $tier_util upper]"
+  puts $fp "# util_bottom=[dict get $tier_util bottom]"
+  puts $fp "# util_method=[dict get $tier_util method]"
+  puts $fp "# total_cell_area=[dict get $tier_util total_cell_area]"
   if {[array size skip_reason_counts] > 0} {
     puts $fp "# skip_reasons"
     foreach reason [lsort [array names skip_reason_counts]] {

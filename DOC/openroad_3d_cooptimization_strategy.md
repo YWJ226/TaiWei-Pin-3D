@@ -294,18 +294,76 @@ Each record includes:
 - `driver_pin`
 - `moved_sinks`
 - `retained_sinks`
+- cost-decision fields such as `score_upper`, `score_bottom`, `util_upper`, `util_bottom`, `estimated_extra_hbt_upper`, and `estimated_extra_hbt_bottom`
 
 The manifest is the contract for later analysis stages. After `split_net`, later stages are allowed to insert same-tier local buffers around the split point, but the reports continue to check whether the moved and retained sink partitions stayed meaningful.
 
 ### Buffer placement and cell choice
 
-Current split selection is fanout-driven and opposite-tier by default:
+Current split selection is cost-driven:
 
 - a split candidate is defined by `mixed_fanout`, not by raw structural cross-tier presence
 - the mixed-fanout classifier ignores driver tier and ignores `__PIN3DSPLITBUF__` pins
-- if the driver is on `upper`, the pass first tries to move `bottom` instance sinks behind a `bottom` buffer
-- if the driver is on `bottom`, the pass first tries to move `upper` instance sinks behind an `upper` buffer
-- if the preferred opposite-tier split is illegal, the pass skips deterministically instead of forcing a weak fallback
+- the pass evaluates placing the split buffer on `upper` and on `bottom`
+- if the buffer is placed on `upper`, upper sinks move to the branch net and bottom sinks remain on the original net
+- if the buffer is placed on `bottom`, bottom sinks move to the branch net and upper sinks remain on the original net
+- unsupported top-level sink rewrites remain infeasible choices
+- if both candidate choices are illegal, the net is skipped deterministically
+
+The score is:
+
+```text
+score(t) = w_util * util_penalty(t) + w_hbt * hbt_penalty(t) + w_area * buffer_area_penalty(t)
+```
+
+Default parameters:
+
+- `u_safe = 0.60`
+- `alpha = 12.0`
+- `w_util = 1.0`
+- `w_hbt = 2.5`
+- `w_area = 400.0`
+- high-util forbid threshold = `0.80`
+- near-tie threshold = `5%`
+
+The utilization term uses a single-threshold exponential penalty:
+
+```text
+util_penalty(u) = 0                                  when u <= u_safe
+util_penalty(u) = exp(alpha * (u - u_safe)) - 1      when u > u_safe
+```
+
+The HBT term is a split-decision proxy only:
+
+- if `buffer_tier != driver_tier`, `estimated_extra_hbt = 1`
+- if `buffer_tier == driver_tier`, `estimated_extra_hbt = retained_opposite_tier_sink_count`
+- `hbt_penalty = log2(1 + estimated_extra_hbt)`
+
+The area term uses the chosen split buffer master area normalized by the
+current core area:
+
+- `buffer_area_penalty = chosen_buffer_area / core_area`
+
+The area term is intentionally simple and uses the chosen split buffer master
+only:
+
+- `buffer_area_penalty = chosen_buffer_area / core_area`
+
+This makes the area term more visible on very small designs, where a few extra
+buffers can perturb tier density materially even if the absolute cell count is
+small.
+
+This is not the actual routed HBT count. It exists only to rank the two legal split choices cheaply before routing.
+
+The full score is:
+
+```text
+score(t) = w_util * util_penalty(t) + w_hbt * hbt_penalty(t) + w_area * buffer_area_penalty(t)
+```
+
+Tie handling is deterministic. When the two scores differ by less than `5%`, the pass breaks the tie by lower utilization penalty, then lower `estimated_extra_hbt`, then lower area penalty, then opposite-of-driver tier, then lexical fallback to `upper`.
+
+The tier utilization model is intentionally lightweight. OpenROAD estimates global tier utilization once per split run from tier-classified master area divided by the current core area, then reuses that value for all candidate nets. The area term reuses the same core area and the chosen candidate buffer master area. No local bin congestion or route-stage geometry is used.
 
 Buffer master choice:
 

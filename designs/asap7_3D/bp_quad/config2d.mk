@@ -12,7 +12,7 @@ export SDC_FILE      = $(DESIGN_HOME)/asap7_3D/$(DESIGN_NICKNAME)/bsg_chip.sdc
 export ADDITIONAL_LEFS = $(sort $(wildcard $(PLATFORM_DIR)/lef/fakeram/*.lef))
 export ADDITIONAL_LIBS = $(sort $(wildcard $(PLATFORM_DIR)/lib/NLDM/fakeram/*.lib))
 
-export CORE_UTILIZATION ?= 70
+export CORE_UTILIZATION ?= 60
 export CORE_ASPECT_RATIO = 1
 export CORE_MARGIN = 5
 export GEN_EFF medium

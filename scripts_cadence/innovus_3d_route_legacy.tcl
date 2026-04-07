@@ -62,11 +62,11 @@ set effective_allow_net [cts_owner_allow_net]
 _report_allow_net_resolution "route-legacy" $requested_allow_net $effective_allow_net
 puts "INFO: Running optDesign -postRoute (owner=[cts_owner_tier], receive=[cts_receive_tier], requested_allow_net=[_format_allow_net_class $requested_allow_net], effective_allow_net=[_format_allow_net_class $effective_allow_net])."
 # apply_tier_policy [cts_owner_tier] -fixlib 1 -allow_net $effective_allow_net
-if {[info exists ::env(UPPER_SITE)] && [info exists ::env(BOTTOM_SITE)] && $::env(UPPER_SITE) ne $::env(BOTTOM_SITE)} {
-  puts "INFO: Skipping optDesign -postRoute because UPPER_SITE and BOTTOM_SITE are different."
-} else {
-  optDesign -postRoute -outDir $REPORTS_DIR -prefix route_legacy
-}
+# if {[info exists ::env(UPPER_SITE)] && [info exists ::env(BOTTOM_SITE)] && $::env(UPPER_SITE) ne $::env(BOTTOM_SITE)} {
+#   puts "INFO: Skipping optDesign -postRoute because UPPER_SITE and BOTTOM_SITE are different."
+# } else {
+#   optDesign -postRoute -outDir $REPORTS_DIR -prefix route_legacy
+# }
 
 extract_cross_tier_nets [file join $LOG_DIR "5_route.after.nets"]
 extract_cross_tier_nets [file join $LOG_DIR "5_route.clock.after.nets"] -clock_only 1

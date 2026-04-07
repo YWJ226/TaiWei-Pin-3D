@@ -144,10 +144,18 @@ def write_task_status(
     }
     if extra:
         payload.update(extra)
-    tmp_path = status_path.with_suffix(".json.tmp")
-    with open(tmp_path, "w") as fh:
-        json.dump(payload, fh, indent=2, sort_keys=True)
-    os.replace(tmp_path, status_path)
+    tmp_path = status_path.with_name(
+        f"{status_path.name}.{os.getpid()}.{time.time_ns()}.tmp")
+    try:
+        with open(tmp_path, "w") as fh:
+            json.dump(payload, fh, indent=2, sort_keys=True)
+        os.replace(tmp_path, status_path)
+    finally:
+        try:
+            if tmp_path.exists():
+                tmp_path.unlink()
+        except Exception:
+            pass
 
 
 def read_task_status(cfg: RunConfig) -> Dict[str, object]:
@@ -213,6 +221,91 @@ def _active_payloads(payloads: Sequence[Dict[str, object]]
     ]
 
 
+def _repo_root_from_payload(payload: Dict[str, object]) -> Path:
+    raw = str(payload.get("pwd", "")).strip()
+    if raw:
+        return Path(raw)
+    return Path.cwd()
+
+
+def _path_from_payload(payload: Dict[str, object],
+                       key: str) -> Optional[Path]:
+    raw = str(payload.get(key, "")).strip()
+    if not raw:
+        return None
+    path = Path(raw)
+    if not path.is_absolute():
+        path = _repo_root_from_payload(payload) / path
+    return path
+
+
+def _run_context_from_log(payload: Dict[str, object]) -> Tuple[str, str, str]:
+    enablement = str(payload.get("tech", "")).strip()
+    design = str(payload.get("case", "")).strip()
+    flow = str(payload.get("flow", "")).strip()
+    flow_variant = "openroad" if flow == "ord" else "cadence"
+
+    run_log = _path_from_payload(payload, "run_log")
+    if run_log is None or not run_log.exists():
+        return enablement, design, flow_variant
+
+    try:
+        with open(run_log, "r", errors="ignore") as fh:
+            for line in fh:
+                if not line.startswith("[run] "):
+                    continue
+                fields = {}
+                for token in line.strip().split()[1:]:
+                    if "=" not in token:
+                        continue
+                    key, value = token.split("=", 1)
+                    fields[key] = value
+                if "enablement" in fields:
+                    enablement = fields["enablement"]
+                if "design" in fields:
+                    design = fields["design"]
+                if "flow_variant" in fields:
+                    flow_variant = fields["flow_variant"]
+                if enablement and design and flow_variant:
+                    break
+    except OSError:
+        pass
+
+    return enablement, design, flow_variant
+
+
+def _newest_file(paths: Iterable[Path]) -> Optional[Path]:
+    newest = None
+    newest_mtime = -1.0
+    for path in paths:
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            continue
+        if mtime > newest_mtime:
+            newest = path
+            newest_mtime = mtime
+    return newest
+
+
+def _stage_log_from_payload(payload: Dict[str, object]) -> str:
+    repo_root = _repo_root_from_payload(payload)
+    enablement, design, flow_variant = _run_context_from_log(payload)
+    if not enablement or not design or not flow_variant:
+        return "-"
+
+    log_dir = repo_root / "logs" / enablement / design / flow_variant
+    if not log_dir.exists():
+        return "-"
+
+    current_log = _newest_file(log_dir.glob("*.log.tmp"))
+    if current_log is None:
+        current_log = _newest_file(log_dir.glob("*.log"))
+    if current_log is None:
+        return "-"
+    return current_log.name
+
+
 def print_status_details(payloads: Sequence[Dict[str, object]],
                          *,
                          only_active: bool = False) -> None:
@@ -231,6 +324,7 @@ def print_status_details(payloads: Sequence[Dict[str, object]],
             "job": str(payload.get("dispatch_job_id", "")) or "-",
             "pid": str(payload.get("dispatch_pid", "")) if payload.get("dispatch_pid") is not None else "-",
             "alive": str(payload.get("dispatch_pid_alive", "")) if payload.get("dispatch_pid_alive") is not None else "-",
+            "stage_log": _stage_log_from_payload(payload),
         })
 
     widths = {
@@ -242,6 +336,8 @@ def print_status_details(payloads: Sequence[Dict[str, object]],
         "job": max(len("JOB"), max(len(row["job"]) for row in rows)),
         "pid": max(len("PID"), max(len(row["pid"]) for row in rows)),
         "alive": max(len("ALIVE"), max(len(row["alive"]) for row in rows)),
+        "stage_log": max(len("STAGE_LOG"),
+                         max(len(row["stage_log"]) for row in rows)),
     }
 
     header = (
@@ -253,7 +349,8 @@ def print_status_details(payloads: Sequence[Dict[str, object]],
         f"{'DISPATCH':<{widths['dispatch']}} "
         f"{'JOB':<{widths['job']}} "
         f"{'PID':>{widths['pid']}} "
-        f"{'ALIVE':<{widths['alive']}}"
+        f"{'ALIVE':<{widths['alive']}} "
+        f"{'STAGE_LOG':<{widths['stage_log']}}"
     )
     print(header)
     print("[TASK] " + "-" * max(0, len(header) - len("[TASK] ")))
@@ -268,7 +365,8 @@ def print_status_details(payloads: Sequence[Dict[str, object]],
             f"{row['dispatch']:<{widths['dispatch']}} "
             f"{row['job']:<{widths['job']}} "
             f"{row['pid']:>{widths['pid']}} "
-            f"{row['alive']:<{widths['alive']}}"
+            f"{row['alive']:<{widths['alive']}} "
+            f"{row['stage_log']:<{widths['stage_log']}}"
         )
 
 

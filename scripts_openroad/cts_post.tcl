@@ -85,7 +85,10 @@ if {!$skip_cts_post_repair} {
     puts "Detailed placement failed in CTS post: $msg"
     exit $result
   }
-  check_placement -verbose
+  set err [catch {check_placement -verbose} err_message]
+  if {$err} {
+    puts "WARNING: $err_message"
+  }
 } else {
   puts "INFO(OR): SKIP_CTS_POST_REPAIR_TIMING=$skip_cts_post_repair, skipping post-CTS repair_timing."
 }

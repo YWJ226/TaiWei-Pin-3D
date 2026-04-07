@@ -95,8 +95,10 @@ if {$result != 0} {
 utl::push_metrics_stage "cts__{}__owner_tree"
 estimate_parasitics -placement
 utl::pop_metrics_stage
-[catch {check_placement -verbose}]
-
+set err [catch {check_placement -verbose} err_message]
+if {$err} {
+  puts "WARNING: $err_message"
+}
 set skip_cts_post_repair 0
 if {[info exists ::env(OPENROAD_CTS_OWNER_REPAIR_TIMING)]} {
   set skip_cts_post_repair $::env(OPENROAD_CTS_OWNER_REPAIR_TIMING)
