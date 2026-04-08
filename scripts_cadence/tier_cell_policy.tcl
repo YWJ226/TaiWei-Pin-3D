@@ -92,35 +92,13 @@ proc rebuild_rows_for_site {site_name tier {core_margin 0}} {
   }
 
   # 2. Retrieve DieBox
-  set die_bbox [get_db current_design .bbox]
-  
-  # --- ROBUSTNESS FIX ---
-  # If die_bbox is nested like {{0.0 0.0 11.4 11.2}}, llength will be 1.
-  # If die_bbox is flat like {0.0 0.0 11.4 11.2}, llength will be 4.
-  # We peel off the outer layer if it is nested.
-  set die_bbox [lindex $die_bbox 0]
+  set die_box_size [dbGet top.fPlan.box_size]
+  set die_box_size [lindex $die_box_size 0]
   set core_margin $::env(CORE_MARGIN)
-  # Now die_bbox is guaranteed to be flat: {0.0 0.0 11.4 11.2}
-  lassign $die_bbox die_x1 die_y1 die_x2 die_y2
+  # Now die_box_size is guaranteed to be flat
+  lassign $die_box_size die_w die_h
 
-  # 3. Calculate new area with margin applied
-  set new_x1 [expr $die_x1 + $core_margin]
-  set new_y1 [expr $die_y1 + $core_margin]
-  set new_x2 [expr $die_x2 - $core_margin]
-  set new_y2 [expr $die_y2 - $core_margin]
-
-  # Sanity check
-  if {$new_x1 >= $new_x2 || $new_y1 >= $new_y2} {
-    puts "ERROR(INV): CORE_MARGIN ($core_margin) is too large for the current DieBox {$die_bbox}."
-    return
-  }
-
-  puts "INFO(INV): Rebuilding rows for site '$site_name'"
-  puts "INFO(INV): Row Area: {$new_x1 $new_y1 $new_x2 $new_y2}"
-
-  # 4. Delete and Re-create
-  deleteRow -all
-  createRow -site $site_name -area [list $new_x1 $new_y1 $new_x2 $new_y2]
+  floorPlan -adjustToSite -siteOnly $site_name -d $die_w $die_h $core_margin $core_margin $core_margin $core_margin
   deleteHaloFromBlock -allBlock
   lassign [pmu::_get_halos $tier] halo_x halo_y
   puts "INFO(INV): Reapply macro halo for tier '$tier' halo_x=$halo_x halo_y=$halo_y"

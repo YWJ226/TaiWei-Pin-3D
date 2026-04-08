@@ -73,6 +73,8 @@ export ABC_LOAD_IN_FF    = 3.898
 
 # -------- Floorplan --------
 export PLACE_SITE   = FreePDK45_38x28_10R_NP_162NW_34O
+export UPPER_SITE   = FreePDK45_38x28_10R_NP_162NW_34O
+export BOTTOM_SITE  = FreePDK45_38x28_10R_NP_162NW_34O
 export IO_PLACER_H ?= M5
 export IO_PLACER_V ?= M6
 export HBT_MAX_CORE_UTILIZATION ?= 0.8

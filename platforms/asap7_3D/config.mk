@@ -90,6 +90,8 @@ export ADDER_MAP_FILE  ?= $(PLATFORM_DIR)/yoSys/cells_adders_R.v
 
 # -------- Floorplan --------
 export PLACE_SITE   = asap7sc7p5t
+export UPPER_SITE   = asap7sc7p5t
+export BOTTOM_SITE  = asap7sc7p5t
 # export IO_PLACER_H ?= M4
 # export IO_PLACER_V ?= M5
 export IO_PLACER_H ?= M4

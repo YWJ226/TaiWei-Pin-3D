@@ -1,14 +1,10 @@
 #################################################################
-# pdn_config_simple_bottom.tcl
-# Minimal 3D PDN for bottom tier only
+# pdn_config_bottom.tcl
+# Bottom-tier PDN only
 #################################################################
 
-puts "INFO: Start bottom-tier PDN..."
-
-# --------------------------
-# Basic floorplan channels
-# --------------------------
-set minCh 5
+puts "INFO: pdn_config_bottom Start bottom-tier PDN..."
+source $::env(CADENCE_SCRIPTS_DIR)/place_macro_util.tcl
 
 # --------------------------
 # Bottom mesh geometry
@@ -33,35 +29,14 @@ proc get_bottom_tier_insts {} {
 }
 
 # --------------------------
-# Common PDN floorplan prep
-# --------------------------
-proc prepare_pdn_floorplan {min_ch} {
-  set core_insts [dbGet top.insts.cell.subClass core -p2]
-  if {[llength $core_insts] > 0} {
-    dbSet $core_insts.pStatus unplaced
-  }
-  finishFloorplan -fillPlaceBlockage hard $min_ch
-  cutRow
-  finishFloorplan -fillPlaceBlockage hard $min_ch
-
-  set fp_blk [dbGet top.fPlan.pBlkgs.name finishfp_place_blkg_* -p1]
-  if {[llength $fp_blk] > 0} {
-    deselectAll
-    select_obj $fp_blk
-    deleteSelectedFromFPlan
-    deselectAll
-  }
-}
-
-# --------------------------
 # Build bottom-tier PDN
 # --------------------------
 proc build_bottom_pdn {} {
   set inst_list [get_bottom_tier_insts]
 
-  puts "INFO: BOT inst count = [llength $inst_list]"
+  puts "INFO: pdn_config_bottom BOT tier inst count = [llength $inst_list]"
   if {[llength $inst_list] == 0} {
-    puts "WARN: No bottom-tier instances found. Skip."
+    puts "WARN: pdn_config_bottom No bottom-tier instances found."
     return
   }
 
@@ -99,19 +74,43 @@ proc build_bottom_pdn {} {
             -start_offset $::O_M7 \
             -set_to_set_distance $::P_M7
 
-  puts "INFO: Bottom-tier PDN done."
+  puts "INFO: pdn_config_bottom Bottom-tier PDN finished."
 }
 
 # --------------------------
 # Top-level PDN flow
 # --------------------------
-prepare_pdn_floorplan $minCh
+# 1) Unplace core cells only. Keep macro instances fixed.
+lassign [pmu::_get_halos bottom] halo_x halo_y
+set minCh [expr {$halo_x > $halo_y ? $halo_x : $halo_y}]
+set core_insts [dbGet top.insts.cell.subClass core -p2]
+if {[llength $core_insts] > 0} {
+  dbSet $core_insts.pStatus unplaced
+}
+if {$minCh > 0} {
+  finishFloorplan -fillPlaceBlockage hard $minCh
+  cutRow
+  finishFloorplan -fillPlaceBlockage hard $minCh
+  set fp_blk [dbGet top.fPlan.pBlkgs.name finishfp_place_blkg_* -p1]
+  if {[llength $fp_blk] > 0} {
+    deselectAll
+    select_obj $fp_blk
+    deleteSelectedFromFPlan
+    deselectAll
+  }
+}
 
+# 2) Common stripe configuration
 setAddStripeMode -orthogonal_only true
 setAddStripeMode -ignore_DRC false
+setAddStripeMode -over_row_extension true
 setAddStripeMode -extend_to_closest_target area_boundary
+setAddStripeMode -inside_cell_only false
+setAddStripeMode -route_over_rows_only false
 
 clearGlobalNets
+
+# 3) Build bottom-tier PDN
 build_bottom_pdn
 
-puts "INFO: Finished bottom-tier PDN."
+puts "INFO: pdn_config_bottom Finished bottom-tier PDN."

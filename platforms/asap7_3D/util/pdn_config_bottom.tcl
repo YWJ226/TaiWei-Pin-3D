@@ -4,6 +4,7 @@
 ########################################################################
 
 puts "INFO: pdn_config_bottom Start bottom-tier PDN..."
+source $::env(CADENCE_SCRIPTS_DIR)/place_macro_util.tcl
 
 proc get_bottom_tier_insts {} {
   set inst_ptrs [dbGet top.insts.cell.name "*_bottom" -p2]
@@ -66,6 +67,27 @@ proc build_bottom_pdn {} {
   puts "INFO: pdn_config_bottom Bottom-tier PDN finished."
 }
 
+# 1) Unplace core cells only. Keep macro instances fixed.
+lassign [pmu::_get_halos bottom] halo_x halo_y
+set minCh [expr {$halo_x > $halo_y ? $halo_x : $halo_y}]
+set core_insts [dbGet top.insts.cell.subClass core -p2]
+if {[llength $core_insts] > 0} {
+  dbSet $core_insts.pStatus unplaced
+}
+if {$minCh > 0} {
+  finishFloorplan -fillPlaceBlockage hard $minCh
+  cutRow
+  finishFloorplan -fillPlaceBlockage hard $minCh
+  set fp_blk [dbGet top.fPlan.pBlkgs.name finishfp_place_blkg_* -p1]
+  if {[llength $fp_blk] > 0} {
+    deselectAll
+    select_obj $fp_blk
+    deleteSelectedFromFPlan
+    deselectAll
+  }
+}
+
+# 2) Common stripe configuration
 setAddStripeMode -orthogonal_only true
 setAddStripeMode -ignore_DRC false
 setAddStripeMode -over_row_extension true
@@ -73,4 +95,5 @@ setAddStripeMode -extend_to_closest_target area_boundary
 setAddStripeMode -inside_cell_only false
 setAddStripeMode -route_over_rows_only false
 
+# 3) Build bottom-tier PDN
 build_bottom_pdn
