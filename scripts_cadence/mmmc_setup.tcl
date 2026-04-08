@@ -2,6 +2,12 @@
 # commands and reports are copyrighted by Cadence. We thank Cadence for
 # granting permission to share our research to help promote and foster the next
 # generation of innovators.
+
+if {[info exists ::env(PROCESS)] && $::env(PROCESS) == 7} {
+  puts "  PROCESS=7 detected, setting library units: time=1ps"
+  setLibraryUnit -time 1ps
+}
+
 puts "Setting up MMC timing libraries and corners"
 create_library_set -name WC_LIB -timing $libworst
 create_library_set -name BC_LIB -timing $libbest
