@@ -39,8 +39,8 @@ violation.
 
 Relevant logs:
 
-- [3_place_upper.upper-only.log](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/logs/nangate45_3D/swerv_wrapper/cds_ordtech/3_place_upper.upper-only.log)
-- [3_place_upper.upper-only.log](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/logs/nangate45_3D/swerv_wrapper/cds_ordtech_nosplit/3_place_upper.upper-only.log)
+- [3_place_upper.upper-only.log](logs/nangate45_3D/swerv_wrapper/cds_ordtech/3_place_upper.upper-only.log)
+- [3_place_upper.upper-only.log](logs/nangate45_3D/swerv_wrapper/cds_ordtech_nosplit/3_place_upper.upper-only.log)
 
 Common indicators seen in both split and no-split runs:
 
@@ -116,7 +116,7 @@ a normal expectation of the route stage.
 - legacy single-stage route:
   - `cds-route`
 - script:
-  - [innovus_3d_route_legacy.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_cadence/innovus_3d_route_legacy.tcl)
+  - [innovus_3d_route_legacy.tcl](scripts_cadence/innovus_3d_route_legacy.tcl)
 
 ### Symptom
 
@@ -125,13 +125,13 @@ stage expectation.
 
 Observed example:
 
-- [final_summary.txt](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/logs/asap7_3D/swerv_wrapper/cadence_route_legacy_cmp/final_summary.txt)
+- [final_summary.txt](logs/asap7_3D/swerv_wrapper/cadence_route_legacy_cmp/final_summary.txt)
   - `DRC Violations = 50466`
 
 The corresponding route log shows that the legacy flow explicitly runs
 owner-tier postRoute optimization after `routeDesign`:
 
-- [5_route.log](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/logs/asap7_3D/swerv_wrapper/cadence_route_legacy_cmp/5_route.log)
+- [5_route.log](logs/asap7_3D/swerv_wrapper/cadence_route_legacy_cmp/5_route.log)
   - `Running optDesign -postRoute ...`
 
 ### Current Interpretation
@@ -258,11 +258,11 @@ The 45nm and heterogeneous ariane133 OpenROAD runs fail at `ord-cts`.
 
 Observed logs:
 
-- [nangate45_3D ariane133 run log](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/run_logs/nangate45_3D/ord/run/ariane133_run.log)
+- [nangate45_3D ariane133 run log](run_logs/nangate45_3D/ord/run/ariane133_run.log)
   - `make: *** [Makefile:447: ord-cts] Error 11`
   - `clk_i_regs` has about `19940` register sinks
   - CTS creates about `3562` clock buffers / clock nets before failing
-- [asap7_nangate45_3D ariane133 run log](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/run_logs/asap7_nangate45_3D/ord/run/ariane133_run.log)
+- [asap7_nangate45_3D ariane133 run log](run_logs/asap7_nangate45_3D/ord/run/ariane133_run.log)
   - `make: *** [Makefile:447: ord-cts] Error 11`
   - `clk_i_regs` has about `19851` register sinks
   - CTS creates about `5122` clock buffers / clock nets before failing
@@ -283,7 +283,7 @@ router pin access.
 
 Observed log:
 
-- [asap7_3D ariane133 GRT log](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/logs/asap7_3D/ariane133/openroad/5_1_grt.log)
+- [asap7_3D ariane133 GRT log](logs/asap7_3D/ariane133/openroad/5_1_grt.log)
   - `DRT-0073 No access point`
   - failures are reported on SRAM pins such as `rd_out[15]`
   - affected SRAM views include `sram_asap7_16x256_1rw_upper` and corresponding

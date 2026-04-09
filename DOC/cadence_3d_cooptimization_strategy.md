@@ -15,9 +15,9 @@ This document describes the current commercial 3D flow implemented in the Cadenc
 
 The authoritative sources are:
 
-- [Makefile](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/Makefile)
-- [test/commercial/CDS_3D_NEW_FLOW.sh](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/test/commercial/CDS_3D_NEW_FLOW.sh)
-- [scripts_cadence/handoff_manager.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_cadence/handoff_manager.tcl)
+- [Makefile](Makefile)
+- [test/commercial/CDS_3D_NEW_FLOW.sh](test/commercial/CDS_3D_NEW_FLOW.sh)
+- [scripts_cadence/handoff_manager.tcl](scripts_cadence/handoff_manager.tcl)
 
 ## 2. How The Current Commercial Flow Runs
 
@@ -25,8 +25,8 @@ The authoritative sources are:
 
 The current commercial flow is normally driven by:
 
-- [CDS_3D_NEW_FLOW.sh](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/test/commercial/CDS_3D_NEW_FLOW.sh)
-- [CDS_3D_ALLOW_NET_MATRIX.sh](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/test/commercial/CDS_3D_ALLOW_NET_MATRIX.sh)
+- [CDS_3D_NEW_FLOW.sh](test/commercial/CDS_3D_NEW_FLOW.sh)
+- [CDS_3D_ALLOW_NET_MATRIX.sh](test/commercial/CDS_3D_ALLOW_NET_MATRIX.sh)
 
 `CDS_3D_NEW_FLOW.sh` is the single-run launcher. `CDS_3D_ALLOW_NET_MATRIX.sh` wrap it for comparison experiments.
 
@@ -66,11 +66,11 @@ cds-route
 cds-restore
 ```
 
-Important current choices:
+Default targets used by the launcher:
 
-- The public CTS target is the staged flow `cds-cts`, not `cds-cts-legacy`.
-- The public route target used by the launcher is currently `cds-route`, which still points to the legacy route Tcl for robustness.
-- The final reporting target used by the launcher is `cds-restore`, not `cds-final`, because `cds-restore` can reuse the routed ENC database when present and fall back to DEF otherwise.
+- CTS: `cds-cts`
+- Route: `cds-route`
+- Final report: `cds-restore`
 
 ### 2.3 Resume and reuse behavior
 
@@ -88,9 +88,9 @@ This is why the physical stage contracts must be explicit and stable.
 
 ### 3.1 Handoff management
 
-The flow is no longer organized around hardcoded filenames scattered in stage scripts. The canonical stage contracts are defined in:
+The canonical stage contracts are defined in:
 
-- [handoff_manager.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_cadence/handoff_manager.tcl)
+- [handoff_manager.tcl](scripts_cadence/handoff_manager.tcl)
 
 For each stage, `handoff_stage_paths` resolves:
 
@@ -126,7 +126,7 @@ The flow uses LEF view switching as a first-class optimization knob. The Makefil
 - `LEF_FILES_POSTROUTE_RECEIVE`
 - `LEF_FILES_POSTROUTE_OWNER`
 
-The derivation is controlled in [Makefile](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/Makefile):
+The derivation is controlled in [Makefile](Makefile):
 
 ```make
 LEF_FILES_UPPER_COVER  = $(TECH_LEF) $(SC_LEF_UPPER_COVER)  $(ADDITIONAL_LEFS_UPPER_COVER)
@@ -153,7 +153,7 @@ For CTS and post-route:
 
 The tier policy is implemented in:
 
-- [tier_cell_policy.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_cadence/tier_cell_policy.tcl)
+- [tier_cell_policy.tcl](scripts_cadence/tier_cell_policy.tcl)
 
 The key mechanism is `apply_tier_policy <tier> ...`, which combines:
 
@@ -185,7 +185,7 @@ Behavior:
 
 Placement-stage optimization is implemented in:
 
-- [place_common.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_cadence/place_common.tcl)
+- [place_common.tcl](scripts_cadence/place_common.tcl)
 
 Important commands:
 
@@ -206,7 +206,7 @@ This is important because LEF view selection alone does not fully prevent the in
 
 The shared metric extractor is:
 
-- [extract_report.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_cadence/extract_report.tcl)
+- [extract_report.tcl](scripts_cadence/extract_report.tcl)
 
 Cross-tier reports use the expanded categories:
 
@@ -250,7 +250,7 @@ This report model is used by:
 | `cds-legalize-upper` | `scripts_cadence/innovus_opt_lg_upper.tcl` | upper final legalize |
 | `cds-legalize-bottom` | `scripts_cadence/innovus_opt_lg_bottom.tcl` | bottom final legalize |
 | `cds-cts` | wrapper target | owner-tree + receive-opt + finalize |
-| `cds-route` | `scripts_cadence/innovus_3d_route_legacy.tcl` | current public legacy route |
+| `cds-route` | `scripts_cadence/innovus_3d_route_legacy.tcl` | single-pass route (route + postRoute) |
 | `cds-restore` | `scripts_cadence/innovus_3d_final-re.tcl` | final extraction with ENC restore fallback |
 
 ### 4.2 Available alternative or debug targets
@@ -259,7 +259,7 @@ This report model is used by:
 |---|---|---|
 | `cds-2d_flow` | `scripts_cadence/innovus_2d_flow.tcl` | one-script 2D baseline |
 | `cds-3d-pdn` | `scripts_cadence/innovus_3d_pdn.tcl` | monolithic 3D PDN handoff, not the default commercial path |
-| `cds-cts-legacy` | `scripts_cadence/innovus_3d_cts_legacy.tcl` | legacy CTS baseline |
+| `cds-cts-legacy` | `scripts_cadence/innovus_3d_cts_legacy.tcl` | optional CTS baseline |
 | `cds-cts-owner-tree` | `scripts_cadence/innovus_3d_cts_owner_tree.tcl` | internal staged CTS target |
 | `cds-cts-receive-opt` | `scripts_cadence/innovus_3d_cts_receive_opt.tcl` | internal staged CTS target |
 | `cds-cts-finalize` | `scripts_cadence/innovus_3d_cts_finalize.tcl` | internal staged CTS target |
@@ -318,13 +318,13 @@ This report model is used by:
 | `cds-cts-owner-tree` | `3_place.def`, `3_place.v`, `3_place.sdc` | `4_0_cts_owner_tree.def`, `4_0_cts_owner_tree.v`, `4_0_cts_owner_tree.sdc` | `LEF_FILES_CTS_OWNER` | Active tier = `CTS_LAYER`, fixed tier = opposite, allow-net = owner-only | `cts_init_design_from_paths`, `apply_tier_policy ...`, `create_ccopt_clock_tree_spec`, `ccopt_design` | Build the owner-tier clock tree |
 | `cds-cts-receive-opt` | `4_0_cts_owner_tree.def`, `4_0_cts_owner_tree.v`, `4_0_cts_owner_tree.sdc` | `4_1_cts_receive_opt.def`, `4_1_cts_receive_opt.v`, `4_1_cts_receive_opt.sdc` | `LEF_FILES_CTS_RECEIVE` | Active tier = receive tier, fixed tier = owner tier, allow-net = receive-only | `apply_tier_policy ...`, `optDesign -postCTS -incr` | Repair receive-side clock-related logic without rebuilding the owner tree |
 | `cds-cts-finalize` | `4_1_cts_receive_opt.def`, `4_1_cts_receive_opt.v`, `4_1_cts_receive_opt.sdc` | `4_3_cts_finalize.def`, `4_3_cts_finalize.v`, `4_3_cts_finalize.sdc`, aliases `4_cts.def`, `4_cts.v`, `4_cts.sdc` | `LEF_FILES_CTS_FINALIZE` | No new active tier optimization; reporting and handoff finalization only | `cts_init_design_from_paths`, `extract_cross_tier_nets`, `cts_write_stage_outputs` | Freeze and publish the final CTS handoff |
-| `cds-cts-legacy` | `3_place.def`, `3_place.v`, `3_place.sdc` | `4_1_cts.def`, `4_1_cts.v`, `4_1_cts.sdc`, aliases `4_cts.def`, `4_cts.v`, `4_cts.sdc` | `LEF_FILES_CTS` | Single-pass owner-side CTS baseline | `apply_tier_policy`, `create_ccopt_clock_tree_spec`, `ccopt_design` | Legacy robustness/baseline CTS |
+| `cds-cts-legacy` | `3_place.def`, `3_place.v`, `3_place.sdc` | `4_1_cts.def`, `4_1_cts.v`, `4_1_cts.sdc`, aliases `4_cts.def`, `4_cts.v`, `4_cts.sdc` | `LEF_FILES_CTS` | Single-pass owner-side CTS baseline | `apply_tier_policy`, `create_ccopt_clock_tree_spec`, `ccopt_design` | Optional CTS baseline |
 
 ### 5.5 Route and final reporting
 
 | Target | Input | Output | LEF view | Tier strategy | Main commands | Purpose |
 |---|---|---|---|---|---|---|
-| `cds-route` | `4_cts.def`, `4_cts.v`, `4_cts.sdc` | `5_route.def`, `5_route.v`, `5_route.sdc`, `${DESIGN}_postRoute.enc.dat` | `LEF_FILES_ROUTE` | Current public legacy route. After pure route, both tiers are fixed and owner-tier postRoute repair is applied. | `routeDesign`, `apply_tier_policy [cts_owner_tier]`, `optDesign -postRoute` | Public route target currently used by the commercial launcher |
+| `cds-route` | `4_cts.def`, `4_cts.v`, `4_cts.sdc` | `5_route.def`, `5_route.v`, `5_route.sdc`, `${DESIGN}_postRoute.enc.dat` | `LEF_FILES_ROUTE` | Single-pass route plus owner-tier postRoute repair | `routeDesign`, `apply_tier_policy [cts_owner_tier]`, `optDesign -postRoute` | Default route target in the commercial launcher |
 | `cds-route-new` | `4_cts.def`, `4_cts.v`, `4_cts.sdc` | `5_route.def`, `5_route.v`, `5_route.sdc` | Wrapper over staged route subtargets | Receive-side then owner-side postRoute | invokes route-only, postroute-receive, postroute-owner | Alternative staged route flow |
 | `cds-route-only` | `4_cts.def`, `4_cts.v`, `4_cts.sdc` | `5_0_route.def`, `5_0_route.v`, `5_0_route.sdc`, `${DESIGN}_route_only.enc.dat` | `LEF_FILES_ROUTE_ONLY` | No tier-specific repair yet; pure wiring realization | `route_init_design_from_paths`, `route_apply_router_setup`, `routeDesign` | Separate wire realization from post-route ECO |
 | `cds-postroute-receive` | `5_0_route.def`, `5_0_route.v`, `5_0_route.sdc`, `${DESIGN}_route_only.enc.dat` | `5_1_postroute_receive.def`, `5_1_postroute_receive.v`, `5_1_postroute_receive.sdc` | `LEF_FILES_POSTROUTE_RECEIVE` | Active tier = receive tier, fixed tier = owner tier, allow-net = receive-only | `restoreDesign` if ENC exists, `apply_tier_policy`, `optDesign -postRoute -incr` | Receive-side post-route ECO |
@@ -398,7 +398,7 @@ There are two independent high-level switches:
 
 `PIN3D_SPLIT_NET_FLOW` changes whether the split stage actually inserts split buffers and rewrites the post-IO handoff, or stays as a pass-through report-only stage.
 
-The current Cadence split-net stage uses the same cost-based tier selection policy as the OpenROAD split stage. It no longer chooses the split-buffer tier only by heavier fanout, and it no longer assumes that the opposite-of-driver side is always best.
+The Cadence split-net stage uses the same cost-based tier selection policy as the OpenROAD split stage.
 
 For each legal mixed-fanout signal net, the stage evaluates placing a regular tier-local `BUF*` on `upper` and on `bottom`. The selected tier moves that tier's sinks behind the branch net, while the opposite tier's sinks remain on the original net. Existing clock, PG, special-net, unsupported driver and unsupported top-level sink rewiring skips remain in place, and successful splits must leave both the original net and branch net `mixed_fanout`-pure.
 
@@ -458,7 +458,7 @@ This separates:
 
 Instead of letting one opaque CTS pass introduce and repair everything at once.
 
-### 6.7 Route can also be staged, even though the current launcher uses the legacy route target
+### 6.7 Staged route option
 
 The repository contains:
 
@@ -494,13 +494,13 @@ This is how the flow turns each stage into an observable optimization step inste
 
 If you need to debug or extend the commercial flow, the most useful reading order is:
 
-1. [test/commercial/CDS_3D_NEW_FLOW.sh](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/test/commercial/CDS_3D_NEW_FLOW.sh)
-2. [Makefile](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/Makefile)
-3. [handoff_manager.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_cadence/handoff_manager.tcl)
-4. [tier_cell_policy.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_cadence/tier_cell_policy.tcl)
-5. [place_common.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_cadence/place_common.tcl)
-6. [cts_stage_common.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_cadence/cts_stage_common.tcl)
-7. [route_stage_common.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_cadence/route_stage_common.tcl)
+1. [test/commercial/CDS_3D_NEW_FLOW.sh](test/commercial/CDS_3D_NEW_FLOW.sh)
+2. [Makefile](Makefile)
+3. [handoff_manager.tcl](scripts_cadence/handoff_manager.tcl)
+4. [tier_cell_policy.tcl](scripts_cadence/tier_cell_policy.tcl)
+5. [place_common.tcl](scripts_cadence/place_common.tcl)
+6. [cts_stage_common.tcl](scripts_cadence/cts_stage_common.tcl)
+7. [route_stage_common.tcl](scripts_cadence/route_stage_common.tcl)
 8. The stage entry scripts for the stage you want to change
 
 This order matches the real control flow:

@@ -4,10 +4,10 @@
 
 This document describes the current OpenROAD 3D commercial-style flow implemented in this repository. It is intentionally code-aligned:
 
-- public flow targets come from [Makefile](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/Makefile)
-- stage handoff contracts come from [handoff_manager.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_openroad/handoff_manager.tcl)
-- tier and allow-net policy come from [placement_utils.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_openroad/placement_utils.tcl) and [placement_tier_metrics_policy.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_openroad/placement_tier_metrics_policy.tcl)
-- launchers come from [test/openroad/ORD_3D_NEW_FLOW.sh](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/test/openroad/ORD_3D_NEW_FLOW.sh) and [test/openroad/ORD_3D_ALLOW_NET_MATRIX.sh](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/test/openroad/ORD_3D_ALLOW_NET_MATRIX.sh)
+- public flow targets come from [Makefile](Makefile)
+- stage handoff contracts come from [handoff_manager.tcl](scripts_openroad/handoff_manager.tcl)
+- tier and allow-net policy come from [placement_utils.tcl](scripts_openroad/placement_utils.tcl) and [placement_tier_metrics_policy.tcl](scripts_openroad/placement_tier_metrics_policy.tcl)
+- launchers come from [test/openroad/ORD_3D_NEW_FLOW.sh](test/openroad/ORD_3D_NEW_FLOW.sh) and [test/openroad/ORD_3D_ALLOW_NET_MATRIX.sh](test/openroad/ORD_3D_ALLOW_NET_MATRIX.sh)
 
 The goal is to make the OpenROAD flow structurally parallel to the Cadence flow:
 
@@ -17,11 +17,13 @@ The goal is to make the OpenROAD flow structurally parallel to the Cadence flow:
 - staged preCTS optimization
 - split summary and final summary generation
 
+This strategy document is intentionally implementation-oriented, but it should stay free of run-specific output-directory paths or ad hoc experiment links. Reproducible entry points live under [test/README.md](test/README.md). For adding new OpenROAD Research commands as real staged flow steps, see [openroad_developer_guide.md](DOC/openroad_developer_guide.md).
+
 ## Public Flow Entry
 
 The OpenROAD launcher is:
 
-- [ORD_3D_NEW_FLOW.sh](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/test/openroad/ORD_3D_NEW_FLOW.sh)
+- [ORD_3D_NEW_FLOW.sh](test/openroad/ORD_3D_NEW_FLOW.sh)
 
 It accepts:
 
@@ -78,29 +80,27 @@ Several heavy Tcl files have been split into lighter entry files plus sourced he
 
 Current split pairs:
 
-- [placement_utils.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_openroad/placement_utils.tcl) -> [placement_tier_metrics_policy.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_openroad/placement_tier_metrics_policy.tcl)
-- [split_net.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_openroad/split_net.tcl) -> [split_net_impl.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_openroad/split_net_impl.tcl)
-- [io_place.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_openroad/io_place.tcl) -> [io_place_helpers.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_openroad/io_place_helpers.tcl)
-- [tier_partition.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_openroad/tier_partition.tcl) -> [tier_partition_helpers.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_openroad/tier_partition_helpers.tcl)
+- [placement_utils.tcl](scripts_openroad/placement_utils.tcl) -> [placement_tier_metrics_policy.tcl](scripts_openroad/placement_tier_metrics_policy.tcl)
+- [split_net.tcl](scripts_openroad/split_net.tcl) -> [split_net_impl.tcl](scripts_openroad/split_net_impl.tcl)
+- [io_place.tcl](scripts_openroad/io_place.tcl) -> [io_place_helpers.tcl](scripts_openroad/io_place_helpers.tcl)
+- [tier_partition.tcl](scripts_openroad/tier_partition.tcl) -> [tier_partition_helpers.tcl](scripts_openroad/tier_partition_helpers.tcl)
 
 Each entry file remains the canonical stage-facing interface. The helper file is sourced only if the needed proc set has not already been loaded.
 
-Recent `gcd` smoke checks used to validate the split/source chain:
+Recent `gcd` smoke checks validated the helper split/source chain:
 
-- [openroad_tclsplit_gcd_20260403_r1](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/logs/asap7_3D/gcd/openroad_tclsplit_gcd_20260403_r1)
-  - validated `placement_utils -> placement_tier_metrics_policy`
-  - validated `split_net -> split_net_impl`
-  - reached `ord-3d-split-net`, macro stages, PDN, and `ord-place-init`
-- [openroad_tclsplit_gcd_20260403_r2](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/logs/asap7/gcd/openroad_tclsplit_gcd_20260403_r2)
-  - validated `io_place -> io_place_helpers`
-  - validated `tier_partition -> tier_partition_helpers`
-  - ran through 2D synth, floorplan, IO placement, and TritonPart helper loading before the smoke was intentionally stopped
+- `placement_utils -> placement_tier_metrics_policy`
+- `split_net -> split_net_impl`
+- `io_place -> io_place_helpers`
+- `tier_partition -> tier_partition_helpers`
+
+Those checks were only used to confirm that the split helper structure still loads and reaches the expected OpenROAD stages. The strategy document intentionally does not embed run-specific log or report paths.
 
 ## Handoff Management
 
 OpenROAD stage handoffs are centralized in:
 
-- [handoff_manager.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_openroad/handoff_manager.tcl)
+- [handoff_manager.tcl](scripts_openroad/handoff_manager.tcl)
 
 Each rebuilt stage follows the same front-matter structure:
 
@@ -182,8 +182,8 @@ Applied by stage:
 
 The OpenROAD tier policy is implemented in:
 
-- [placement_utils.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_openroad/placement_utils.tcl)
-- [placement_tier_metrics_policy.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_openroad/placement_tier_metrics_policy.tcl)
+- [placement_utils.tcl](scripts_openroad/placement_utils.tcl)
+- [placement_tier_metrics_policy.tcl](scripts_openroad/placement_tier_metrics_policy.tcl)
 
 It provides four pieces of control:
 
@@ -231,7 +231,7 @@ Policy:
 
 - `clock nets` are exempted from tier locking during `ord-cts` and `ord-cts-post` via `-skip_clock_nets 1`
 - `regular data nets` are still left available to the tool under the normal owner-tier mask
-- `split-managed data nets` are tracked and reported explicitly, but they are no longer force-repaired after every active stage
+- `split-managed data nets` are tracked and reported explicitly; repair is not automatic after every active stage
 
 This keeps normal mixed-net optimization available while still measuring whether the intended split topology survives later optimization.
 
@@ -256,8 +256,8 @@ The current active optimization stages do not rely on blanket split-buffer `dont
 Split-net is now a real public stage:
 
 - `ord-3d-split-net`
-- script: [split_net_stage.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_openroad/split_net_stage.tcl)
-- algorithm helper: [split_net.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_openroad/split_net.tcl) and [split_net_impl.tcl](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/scripts_openroad/split_net_impl.tcl)
+- script: [split_net_stage.tcl](scripts_openroad/split_net_stage.tcl)
+- algorithm helper: [split_net.tcl](scripts_openroad/split_net.tcl) and [split_net_impl.tcl](scripts_openroad/split_net_impl.tcl)
 
 Behavior:
 
@@ -464,7 +464,7 @@ The current OpenROAD co-optimization strategy has five practical layers.
 
 ### 1. Structural co-optimization through staged handoff
 
-The flow no longer jumps directly from `ord-pre` into a monolithic place/route path. Instead it carries explicit 3D handoffs through:
+The flow carries explicit 3D handoffs through:
 
 - 3D floorplan
 - deterministic IO
@@ -541,7 +541,6 @@ This matters because the current behavior is different by stage:
 On the current canonical OpenROAD debug cases:
 
 - `asap7_nangate45_3D/ibex` split-only now completes in about `8s`, splits `223` candidate nets, and reduces structural cross-tier count from `547` to `324`
-- `nangate45_3D/ibex` no longer crashes in `repair_clock_inverters`; the clock-net skip now covers the full clock-tree footprint, and the remaining CTS cross-tier growth is mostly clock-related rather than data-split collapse
 
 ### Performance notes
 
@@ -561,10 +560,9 @@ These optimizations are now part of the intended OpenROAD split strategy, not a 
 
 OpenROAD test entry points under `test/openroad`:
 
-- [ORD_3D_NEW_FLOW.sh](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/test/openroad/ORD_3D_NEW_FLOW.sh)
-- [ORD_3D_ALLOW_NET_MATRIX.sh](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/test/openroad/ORD_3D_ALLOW_NET_MATRIX.sh)
-- [ORD_3D_EXTRACT_VALID_SUMMARIES.sh](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/test/openroad/ORD_3D_EXTRACT_VALID_SUMMARIES.sh)
-- [README.sh](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/test/openroad/README.sh)
+- [ORD_3D_NEW_FLOW.sh](test/openroad/ORD_3D_NEW_FLOW.sh)
+- [ORD_3D_ALLOW_NET_MATRIX.sh](test/openroad/ORD_3D_ALLOW_NET_MATRIX.sh)
+- [README.sh](test/openroad/README.sh)
 
 The default matrix currently targets `gcd` first:
 
@@ -577,27 +575,17 @@ with the two comparison modes:
 - `allownet:on:on`
 - `noallownet:off:off`
 
-The extractor writes CSV rows from:
-
-- `split_net.summary.rpt`
-- `final_summary.txt`
+The extractor writes CSV rows from the split-stage summary artifact and the final summary artifact.
 
 ## Current Verification Notes
 
 Current smoke validation of the split Tcl structure shows:
 
-- `ord-3d-split-net` still reaches the full split pass and writes:
-  - [split_net.summary.rpt](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/logs/asap7_3D/gcd/openroad_tclsplit_gcd_20260403_r1/split_net.summary.rpt)
-  - [split_net.actions.rpt](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/logs/asap7_3D/gcd/openroad_tclsplit_gcd_20260403_r1/split_net.actions.rpt)
-  - [pin3d_split_manifest.list](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/results/asap7_3D/gcd/openroad_tclsplit_gcd_20260403_r1/pin3d_split_manifest.list)
-- `io_place.tcl` still produces legal deterministic placement output:
-  - [2_2_floorplan_io.log](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/logs/asap7/gcd/openroad_tclsplit_gcd_20260403_r2/2_2_floorplan_io.log)
-  - [io_pin_placement.txt](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/logs/asap7/gcd/openroad_tclsplit_gcd_20260403_r2/io_pin_placement.txt)
-- `tier_partition.tcl` still enters the TritonPart UB sweep and writes the sweep plan:
-  - [2_tritonpart.log.tmp](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/logs/asap7/gcd/openroad_tclsplit_gcd_20260403_r2/2_tritonpart.log.tmp)
-  - [partition.simple_plan.txt](/export/home/zhiyuzheng/Projects/TaiWei_Platform/TaiWei_DEV/TaiWei/TaiWei-Pin-3D/results/asap7/gcd/openroad_tclsplit_gcd_20260403_r2/partition.simple_plan.txt)
+- `ord-3d-split-net` still reaches the full split pass and emits split diagnostics plus the split manifest
+- `io_place.tcl` still produces deterministic IO placement outputs
+- `tier_partition.tcl` still enters the TritonPart UB sweep and emits the sweep plan artifacts
 
-These checks were intentionally stopped once the relevant source chains had been exercised. They were not intended as final QoR experiments.
+These checks were intentionally stopped once the relevant source chains had been exercised. They were not intended as final QoR experiments, and the concrete run artifacts are intentionally not referenced here.
 
 ## Current Boundaries
 

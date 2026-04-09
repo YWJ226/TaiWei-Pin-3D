@@ -6,6 +6,25 @@ Our flow allows academic researchers to validate and compare their 3D point tool
 
 ## [Quick Start](#quick-start)
 
+## Documentation Map
+
+The most useful documents in this repository are:
+
+- [test/README.md](test/README.md)
+  Running full cases, rerunning a single stage, evaluating an existing result, and opening GUI handoffs.
+- [DOC/openroad_3d_cooptimization_strategy.md](DOC/openroad_3d_cooptimization_strategy.md)
+  OpenROAD 3D flow structure, stage contracts, tier policy, split-net strategy, and target map.
+- [DOC/cadence_3d_cooptimization_strategy.md](DOC/cadence_3d_cooptimization_strategy.md)
+  Cadence 3D flow structure, staged CTS / route organization, and handoff contracts.
+- [DOC/openroad_developer_guide.md](DOC/openroad_developer_guide.md)
+  How to integrate a new OpenROAD Research C++ command as a Tcl-wrapped stage and compare it against the baseline flow.
+- [DOC/run_experiments_monitoring.md](DOC/run_experiments_monitoring.md)
+  `run_experiments.py` monitoring, status files, dispatch logs, and kill/retry workflow.
+- [platforms/rc_extract/README.md](platforms/rc_extract/README.md)
+  RC rule extraction flow for unified 3D LEF stacks using OpenROAD/OpenRCX plus commercial extraction.
+- [DOC/issue.md](DOC/issue.md)
+  Known issues, limitations, and current investigation notes.
+
 ### Supported Tools
 - **Open-source PD tools**: [ORFS-Research](https://github.com/ieee-ceda-datc/ORFS-Research) (ORD)
   - **Tested commit**: `bd2904522e3a26d50f08ffbcb8a0c6017cc48ebd`
