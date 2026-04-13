@@ -167,7 +167,7 @@ __pin3d_open_gui:
 	@HANDOFF_TCL="$(HANDOFF_TCL)" \
 	HANDOFF_VIEW="$(HANDOFF_VIEW)" \
 	LEF_FILES="$($(GUI_LEF_FILES_VAR))" \
-	$(OPENROAD_EXE) -gui $(OPENROAD_SCRIPTS_DIR)/open_handoff_gui.tcl
+	$(OPENROAD_EXE) $(OPENROAD_SCRIPTS_DIR)/open_handoff_gui.tcl
 EOF
 
 make --no-print-directory \
