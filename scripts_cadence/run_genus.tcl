@@ -137,8 +137,8 @@ syn_opt
 time_info OPT
 write_db ${OBJECTS_DIR}/${DESIGN}_opt.db
 
-# Flatten all modules except for macros/black boxes
-ungroup -all -flatten 
+# Flatten all modules except for macros/black boxes unless hierarchy retention is requested.
+# ungroup -all -flatten
 ##############################################################################
 # Write reports
 ##############################################################################
