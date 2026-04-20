@@ -53,6 +53,7 @@ include $(PLATFORM_DIR)/config.mk
 # ---------------- Work dirs ----------------
 export DESIGN_NICKNAME ?= $(DESIGN_NAME)
 export FLOW_VARIANT    ?= base   # can be openroad / cadence / hybrid
+export PIN3D_VIEW_IMPL ?= tcl
 
 export LOG_DIR     ?= $(WORK_HOME)/logs/$(PLATFORM)/$(DESIGN_NICKNAME)/$(FLOW_VARIANT)
 export OBJECTS_DIR ?= $(WORK_HOME)/objects/$(PLATFORM)/$(DESIGN_NICKNAME)/$(FLOW_VARIANT)
@@ -235,19 +236,21 @@ LEF_FILES_POSTROUTE_OWNER ?= $(LEF_FILES_CTS)
 # =========================================
 .PHONY: ord-versions
 ord-versions:
+	@echo "[ORD] Tool versions"
 	@$(call _mkstdirs)
 	@{ $(YOSYS_EXE) -V; echo openroad $$($(OPENROAD_CMD) -version); } > $(LOG_DIR)/versions.txt 2>&1 || true
 
 .PHONY: ord-2d_flow
 ord-2d_flow:
+	@echo "[ORD] 2D flow"
 	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/openroad_2d_flow.log,$(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/openroad_2d_flow.tcl)
 
 # ---- Generate preprocessed Liberty explicitly ----
 .PHONY: prep-libs
 prep-libs:
-	@$(call _mkstdirs)
 	@echo "[ORD] Preprocess liberty -> $(OBJECTS_DIR)/lib/"
+	@$(call _mkstdirs)
 	@$(MAKE) --no-print-directory $(DONT_USE_LIBS)
 	@# Explicitly build firstword as well (robustness against path aliasing)
 	@$(MAKE) --no-print-directory $(DONT_USE_SC_LIB)
@@ -255,8 +258,8 @@ prep-libs:
 # ----- Synthesis (Yosys) with explicit environment passing -----
 .PHONY: ord-synth
 ord-synth: prep-libs
-	@$(call _mkstdirs)
 	@echo "[ORD] Synthesis (Yosys)"
+	@$(call _mkstdirs)
 	@echo "[ORD] Using libs: $(DONT_USE_LIBS)" > $(LOG_DIR)/1_0_synth_env.log
 	$(call _run_with_tmp_log,$(LOG_DIR)/1_1_yosys.log,/usr/bin/env \
 	  DONT_USE_LIBS="$(DONT_USE_LIBS)" \
@@ -272,6 +275,7 @@ ord-synth: prep-libs
 	  SDC_FILE="$(SDC_FILE)" \
 	  DESIGN_NAME="$(DESIGN_NAME)" \
 	  SYNTH_ARGS="$(SYNTH_ARGS)" \
+	  SYNTH_HIERARCHICAL="$(SYNTH_HIERARCHICAL)" \
 	  ABC_AREA="$(ABC_AREA)" \
 	  ADDER_MAP_FILE="$(ADDER_MAP_FILE)" \
 	  LATCH_MAP_FILE="$(LATCH_MAP_FILE)" \
@@ -284,26 +288,27 @@ ord-synth: prep-libs
 # ----- Floorplan / IO -----
 .PHONY: ord-floorplan
 ord-floorplan:
-	@$(call _mkstdirs)
 	@echo "[ORD] Floorplan"
+	@$(call _mkstdirs)
 	$(call _or,$(OPENROAD_SCRIPTS_DIR)/floorplan.tcl,$(LOG_DIR)/2_1_floorplan.log)
 
 .PHONY: ord-io
 ord-io:
-	@$(call _mkstdirs)
 	@echo "[ORD] IO placement"
+	@$(call _mkstdirs)
 	$(call _or,$(OPENROAD_SCRIPTS_DIR)/io_placement_random.tcl,$(LOG_DIR)/2_2_floorplan_io.log)
 
 # ----- 2Dpre: synth + floorplan + IO + tier partition + copy to *_3D -----
 .PHONY: ord-preplace
 ord-preplace:
+	@echo "[ORD] Pre-place wrapper"
 	@$(MAKE) --no-print-directory ord-floorplan
 	@$(MAKE) --no-print-directory ord-io
 
 .PHONY: ord-tier-partition
 ord-tier-partition:
-	@$(call _mkstdirs)
 	@echo "[ORD] Tier partition"
+	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/2_tritonpart.log,$(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/tier_partition.tcl)
 	@echo "[ORD] Copy 2D artifacts to $(3D_PLATFORM)"
 	@mkdir -p $(WORK_HOME)/results/$(3D_PLATFORM)/$(DESIGN_NICKNAME)/$(FLOW_VARIANT)
@@ -311,18 +316,24 @@ ord-tier-partition:
 
 .PHONY: ord-test-partition
 ord-test-partition:
+	@echo "[ORD] Tier partition experiment"
 	@$(call _mkstdirs)
-	@echo "[ORD] Tier partition"
 	$(call _run_with_tmp_log,$(LOG_DIR)/2_tritonpart.log,$(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/tier_partition_experiment.tcl)
 	@echo "[ORD] Copy 2D artifacts to $(3D_PLATFORM)"
 	@mkdir -p $(WORK_HOME)/results/$(3D_PLATFORM)/$(DESIGN_NICKNAME)/$(FLOW_VARIANT)
 	@cp -rf $(RESULTS_DIR)/* $(WORK_HOME)/results/$(3D_PLATFORM)/$(DESIGN_NICKNAME)/$(FLOW_VARIANT)/ || true
 
 # ----- 3D init -----
-.PHONY: ord-pre
-ord-pre:
+.PHONY: ord-pre-tcl
+ord-pre-tcl:
+	@echo "[ORD] Generate 3D views (Tcl/ODB)"
 	@$(call _mkstdirs)
-	@echo "[ORD] Generate 3D views"
+	$(call _or,$(OPENROAD_SCRIPTS_DIR)/generate_3d_views.tcl,$(LOG_DIR)/2_3d_views.log)
+
+.PHONY: ord-pre-python
+ord-pre-python:
+	@echo "[ORD] Generate 3D views (Python baseline)"
+	@$(call _mkstdirs)
 	@python3 "$(OPENROAD_SCRIPTS_DIR)/generate_3d_views.py" \
 		--def-in    "$(RESULTS_DIR)/2_2_floorplan_io.def" \
 		--v-in      "$(RESULTS_DIR)/2_2_floorplan_io.v" \
@@ -331,144 +342,145 @@ ord-pre:
 		--partition "$(RESULTS_DIR)/partition.txt" \
 		--cell-map  "$(PLATFORM_DIR)/map.json"
 
+.PHONY: ord-pre
+ord-pre:
+	@echo "[ORD] Generate 3D views"
+	@case "$(PIN3D_VIEW_IMPL)" in \
+		python) $(MAKE) --no-print-directory ord-pre-python ;; \
+		tcl|"") $(MAKE) --no-print-directory ord-pre-tcl ;; \
+		*) echo "[ERROR][ORD] Unsupported PIN3D_VIEW_IMPL='$(PIN3D_VIEW_IMPL)'"; exit 1 ;; \
+	esac
+
 # ----- Place -----
 .PHONY: ord-place-init
 ord-place-init:
+	@echo "[ORD] Place init"
 	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/3_place_init.log,LEF_FILES="$(LEF_FILES_BOTTOM_COVER)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/place_init.tcl)
 
 .PHONY: ord-place-init-upper
 ord-place-init-upper:
+	@echo "[ORD] Place init upper"
 	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/3_place_init_upper.log,LEF_FILES="$(LEF_FILES_BOTTOM_COVER)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/place_init_upper.tcl)
 
 .PHONY: ord-place-init-bottom
 ord-place-init-bottom:
+	@echo "[ORD] Place init bottom"
 	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/3_place_init_bottom.log,LEF_FILES="$(LEF_FILES_UPPER_COVER)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/place_init_bottom.tcl)
 
 .PHONY: ord-place-upper
 ord-place-upper:
+	@echo "[ORD] Place upper"
 	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/3_place_upper.log,LEF_FILES="$(LEF_FILES_BOTTOM_COVER)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/place_upper.tcl)
 
 .PHONY: ord-place-bottom
 ord-place-bottom:
+	@echo "[ORD] Place bottom"
 	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/3_place_bottom.log,LEF_FILES="$(LEF_FILES_UPPER_COVER)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/place_bottom.tcl)
 
 .PHONY: ord-3d-floorplan
 ord-3d-floorplan:
+	@echo "[ORD] 3D floorplan"
 	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/2_3_floorplan_3d.log,LEF_FILES="$(LEF_FILES_SPLIT)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/floorplan_3d.tcl)
 
 .PHONY: ord-3d-io
 ord-3d-io:
+	@echo "[ORD] 3D IO placement"
 	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/2_4_floorplan_io.log,LEF_FILES="$(LEF_FILES_SPLIT)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/io_place_3d.tcl)
 
 .PHONY: ord-3d-split-net
 ord-3d-split-net:
+	@echo "[ORD] 3D split net"
 	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/2_4_floorplan_split.log,LEF_FILES="$(LEF_FILES_SPLIT)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/split_net_stage.tcl)
 
 .PHONY: ord-place-macro-upper
 ord-place-macro-upper:
+	@echo "[ORD] Macro placement upper"
 	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/2_5_place_macro_upper.log,LEF_FILES="$(LEF_FILES_BOTTOM_COVER)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/place_macro_upper.tcl)
 
 .PHONY: ord-place-macro-bottom
 ord-place-macro-bottom:
+	@echo "[ORD] Macro placement bottom"
 	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/2_5_place_macro_bottom.log,LEF_FILES="$(LEF_FILES_UPPER_COVER)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/place_macro_bottom.tcl)
 
 .PHONY: ord-3d-pdn-only-bottom
 ord-3d-pdn-only-bottom:
+	@echo "[ORD] 3D PDN only bottom"
 	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/2_6_floorplan_pdn_bottom.log,LEF_FILES="$(LEF_FILES_UPPER_COVER)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/pdn_only_bottom.tcl)
 
 .PHONY: ord-3d-pdn-only-upper
 ord-3d-pdn-only-upper:
+	@echo "[ORD] 3D PDN only upper"
 	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/2_6_floorplan_pdn_upper.log,LEF_FILES="$(LEF_FILES_BOTTOM_COVER)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/pdn_only_upper.tcl)
 
 .PHONY: ord-3d-pdn-only
 ord-3d-pdn-only:
+	@echo "[ORD] 3D PDN only"
 	@$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) ord-3d-pdn-only-bottom
 	@$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) ord-3d-pdn-only-upper
 
 .PHONY: ord-3d-pdn
 ord-3d-pdn:
+	@echo "[ORD] 3D PDN"
 	@$(call _mkstdirs)
 	$(call _or,$(OPENROAD_SCRIPTS_DIR)/pdn.tcl,$(LOG_DIR)/2_6_floorplan_pdn.log)
 	@cp -f $(RESULTS_DIR)/1_synth.sdc $(RESULTS_DIR)/2_floorplan.sdc
 	@cp -f $(RESULTS_DIR)/2_6_floorplan_pdn.def $(RESULTS_DIR)/2_floorplan.def
 	@cp -f $(RESULTS_DIR)/2_6_floorplan_pdn.v   $(RESULTS_DIR)/2_floorplan.v
 
-.PHONY: ord-re-3d-pdn
-ord-re-3d-pdn:
-	@$(call _mkstdirs)
-	$(call _or,$(OPENROAD_SCRIPTS_DIR)/re_pdn.tcl,$(LOG_DIR)/2_6_floorplan_pdn.log)
-	@cp -f $(RESULTS_DIR)/1_synth.sdc $(RESULTS_DIR)/2_floorplan.sdc
-	@cp -f $(RESULTS_DIR)/2_6_floorplan_pdn.def $(RESULTS_DIR)/2_floorplan.def
-	@cp -f $(RESULTS_DIR)/2_6_floorplan_pdn.v   $(RESULTS_DIR)/2_floorplan.v
-
-.PHONY: ord-pre_cts
-ord-pre_cts:
-	@$(call _mkstdirs)
-	@# 1) def and v from global placement
-	@cp -f $(RESULTS_DIR)/$(DESIGN_NAME)_3D.tmp.def $(RESULTS_DIR)/$(DESIGN_NAME)_3D.def
-	@cp -f $(RESULTS_DIR)/$(DESIGN_NAME)_3D.tmp.v $(RESULTS_DIR)/$(DESIGN_NAME)_3D.v
-	$(call _or,$(OPENROAD_SCRIPTS_DIR)/global_placement_odb.tcl,$(LOG_DIR)/3_3_global_placement_odb.log)
-	$(call _or,$(OPENROAD_SCRIPTS_DIR)/resize.tcl,$(LOG_DIR)/3_4_place_resized.log)
-	$(call _or,$(OPENROAD_SCRIPTS_DIR)/detail_place.tcl,$(LOG_DIR)/3_5_place_dp.log)
-	@cp -f $(RESULTS_DIR)/3_5_place_dp.odb $(RESULTS_DIR)/3_place.odb
-	@cp -f $(RESULTS_DIR)/2_floorplan.sdc $(RESULTS_DIR)/3_place.sdc 2>/dev/null || true
-
 .PHONY: ord-gp2lg
 ord-gp2lg:
+	@echo "[ORD] GP2LG handoff copy"
 	@$(call _mkstdirs)
 	$(call _or,$(OPENROAD_SCRIPTS_DIR)/handoff_copy_gp2lg.tcl,$(LOG_DIR)/3_3_gp2lg.log)
 
 .PHONY: ord-legalize-upper
 ord-legalize-upper:
+	@echo "[ORD] Legalize upper"
 	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/3_5_lg_upper.log,LEF_FILES="$(LEF_FILES_BOTTOM_COVER)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/opt_lg_upper.tcl)
 
 .PHONY: ord-legalize-bottom
 ord-legalize-bottom:
+	@echo "[ORD] Legalize bottom"
 	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/3_4_lg_bottom.log,LEF_FILES="$(LEF_FILES_UPPER_COVER)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/opt_lg_bottom.tcl)
 
 # ----- CTS / Route / Finish -----
 .PHONY: ord-cts
 ord-cts:
-	@$(call _mkstdirs)
 	@echo "[ORD] CTS owner-tree"
+	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/4_0_cts.log,LEF_FILES="$(LEF_FILES_CTS_OWNER)" COVER_LAYER="$(COVER_LAYER)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/cts.tcl)
 
 .PHONY: ord-cts-post
 ord-cts-post:
-	@$(call _mkstdirs)
 	@echo "[ORD] CTS receive-opt"
-	$(call _run_with_tmp_log,$(LOG_DIR)/4_1_cts_post.log,LEF_FILES="$(LEF_FILES_CTS_RECEIVE)" COVER_LAYER="$(COVER_LAYER)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/cts_post.tcl)
-
-.PHONY: ord-re-cts
-ord-re-cts:
 	@$(call _mkstdirs)
-	@echo "[ORD] CTS"
-	$(call _or,$(OPENROAD_SCRIPTS_DIR)/re-cts.tcl,$(LOG_DIR)/4_1_cts.log)
+	$(call _run_with_tmp_log,$(LOG_DIR)/4_1_cts_post.log,LEF_FILES="$(LEF_FILES_CTS_RECEIVE)" COVER_LAYER="$(COVER_LAYER)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/cts_post.tcl)
 
 .PHONY: ord-route
 ord-route:
+	@echo "[ORD] Route"
 	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/5_1_grt.log,LEF_FILES="$(LEF_FILES)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/global_route.tcl)
 	$(call _run_with_tmp_log,$(LOG_DIR)/5_2_route.log,LEF_FILES="$(LEF_FILES)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/detail_route.tcl)
 
 .PHONY: ord-final
 ord-final:
-	@$(call _mkstdirs)
 	@echo "[ORD] final_report ..."
+	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/6_report.log,LEF_FILES="$(LEF_FILES)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/final_report.tcl)
 	@echo "[ORD] Extract eval JSON"
 	@$(PYTHON_EXE) "$(EXTRACT_EVAL_METRICS_PY)" \
@@ -479,12 +491,14 @@ ord-final:
 
 .PHONY: ord-3d-flow-2dpart
 ord-3d-flow-2dpart:
+	@echo "[ORD] 3D flow bootstrap (2D partition)"
 	@$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) ord-synth
 	@$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) ord-preplace
 	@$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) ord-tier-partition
 
 .PHONY: ord-3d-flow
 ord-3d-flow:
+	@echo "[ORD] Full 3D flow"
 	@$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) ord-pre
 	@$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) ord-3d-floorplan
 	@$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) ord-3d-io
@@ -595,33 +609,34 @@ ord-hotspot:
 # =========================================
 .PHONY: cds-synth
 cds-synth:
-	@$(call _mkstdirs)
 	@echo "[CDS] Genus synthesis"
+	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/1_genus.log,$(TIME_CMD) $(GENUS_CMD) -overwrite -log $(LOG_DIR)/cadence_1_genus.log -f $(CADENCE_SCRIPTS_DIR)/run_genus.tcl)
 	@cp -f $(SDC_FILE) $(RESULTS_DIR)/1_synth.sdc 2>/dev/null || true
 
 .PHONY: cds-preplace
 cds-preplace:
-	@$(call _mkstdirs)
 	@echo "[CDS] Innovus pre-place"
+	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/2_innovus_preplace.log,$(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_2_innovus_preplace.log -files $(CADENCE_SCRIPTS_DIR)/innovus_preplace.tcl)
 
 .PHONY: cds-2d_flow
 cds-2d_flow:
-	@$(call _mkstdirs)
 	@echo "[CDS] Innovus 2D flow"
+	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/innovus_2d_flow.log,$(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_2d_flow.log -files $(CADENCE_SCRIPTS_DIR)/innovus_2d_flow.tcl)
 
 .PHONY: cds-3d-flow-2dpart
 cds-3d-flow-2dpart:
+	@echo "[CDS] 3D flow bootstrap (2D partition)"
 	@$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) cds-synth
 	@$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) cds-preplace
 	@$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) cds-tier-partition
 
 .PHONY: cds-tier-partition
 cds-tier-partition:
-	@$(call _mkstdirs)
 	@echo "[CDS] Tier partition (OpenROAD in Cadence flow)"
+	@$(call _mkstdirs)
 	@echo "[CDS] Copying 2D artifacts to $(3D_PLATFORM) directory"
 	@{ \
 	  NEW_RESULTS_DIR="$(WORK_HOME)/results/$(3D_PLATFORM)/$(DESIGN_NICKNAME)/$(FLOW_VARIANT)"; \
@@ -639,121 +654,115 @@ cds-tier-partition:
 
 .PHONY: cds-pre
 cds-pre:
-	@$(call _mkstdirs)
-	@echo "[CDS] Generate 3D views"
-	@python3 "$(CADENCE_SCRIPTS_DIR)/generate_3d_views.py" \
-		--def-in    "$(RESULTS_DIR)/2_2_floorplan_io.def" \
-		--v-in      "$(RESULTS_DIR)/2_2_floorplan_io.v" \
-		--def-out   "$(RESULTS_DIR)/$(DESIGN_NAME)_3D.fp.def" \
-		--v-out     "$(RESULTS_DIR)/$(DESIGN_NAME)_3D.fp.v" \
-		--partition "$(RESULTS_DIR)/partition.txt" \
-		--cell-map  "$(PLATFORM_DIR)/map.json"
+	@echo "[CDS] Generate 3D views via OpenROAD ord-pre"
+	@$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) ord-pre
 
 .PHONY: cds-3d-pdn
 cds-3d-pdn:
-	@$(call _mkstdirs)
 	@echo "[CDS] 3D PDN"
+	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/2_pdn.log,$(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_3d_pdn.log -files $(CADENCE_SCRIPTS_DIR)/innovus_3d_pdn.tcl)
 
 .PHONY: cds-3d-floorplan
 cds-3d-floorplan:
-	@$(call _mkstdirs)
 	@echo "[CDS] 3D floorplan"
+	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/2_3_floorplan_3d.log,$(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_2_3_floorplan_3d.log -files $(CADENCE_SCRIPTS_DIR)/innovus_3d_floorplan.tcl)
 
 .PHONY: cds-3d-io
 cds-3d-io:
-	@$(call _mkstdirs)
 	@echo "[CDS] 3D IO placement"
+	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/2_4_floorplan_io.log,$(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_2_4_floorplan_io.log -files $(CADENCE_SCRIPTS_DIR)/innovus_3d_io_place.tcl)
 
 .PHONY: cds-3d-split-net
 cds-3d-split-net:
-	@$(call _mkstdirs)
 	@echo "[CDS] 3D mixed-tier split net"
+	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/2_4_floorplan_split.log,LEF_FILES="$(LEF_FILES_SPLIT)" $(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_2_4_floorplan_split.log -files $(CADENCE_SCRIPTS_DIR)/innovus_3d_split_net.tcl)
 
 .PHONY: cds-place-macro-upper
 cds-place-macro-upper:
-	@$(call _mkstdirs)
 	@echo "[CDS] Macro placement upper"
+	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/2_5_place_macro_upper.log,LEF_FILES="$(LEF_FILES_BOTTOM_COVER)" $(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_2_5_place_macro_upper.log -files $(CADENCE_SCRIPTS_DIR)/innovus_placeMacro_upper.tcl)
 
 .PHONY: cds-place-macro-bottom
 cds-place-macro-bottom:
-	@$(call _mkstdirs)
 	@echo "[CDS] Macro placement bottom"
+	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/2_5_place_macro_bottom.log,LEF_FILES="$(LEF_FILES_UPPER_COVER)" $(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_2_5_place_macro_bottom.log -files $(CADENCE_SCRIPTS_DIR)/innovus_placeMacro_bottom.tcl)
 
 .PHONY: cds-3d-pdn-only
 cds-3d-pdn-only:
+	@echo "[CDS] 3D PDN only"
 	@$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) cds-3d-pdn-only-bottom
 	@$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) cds-3d-pdn-only-upper
 
 .PHONY: cds-3d-pdn-only-bottom
 cds-3d-pdn-only-bottom:
-	@$(call _mkstdirs)
 	@echo "[CDS] 3D PDN only bottom"
+	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/2_6_floorplan_pdn_bottom.log,LEF_FILES="$(LEF_FILES_UPPER_COVER)" $(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_2_6_floorplan_pdn_bottom.log -files $(CADENCE_SCRIPTS_DIR)/innovus_3d_pdn-only-bottom.tcl)
 
 .PHONY: cds-3d-pdn-only-upper
 cds-3d-pdn-only-upper:
-	@$(call _mkstdirs)
 	@echo "[CDS] 3D PDN only upper"
+	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/2_6_floorplan_pdn_upper.log,LEF_FILES="$(LEF_FILES_BOTTOM_COVER)" $(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_2_6_floorplan_pdn_upper.log -files $(CADENCE_SCRIPTS_DIR)/innovus_3d_pdn-only-upper.tcl)
 
 .PHONY: cds-place-init
 cds-place-init:
-	@$(call _mkstdirs)
 	@echo "[CDS] Place init"
+	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/3_place_init.log,LEF_FILES="$(LEF_FILES_UPPER_COVER)" $(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_place_init.log -files $(CADENCE_SCRIPTS_DIR)/innovus_place3D_init.tcl)
 
 .PHONY: cds-place-init-upper
 cds-place-init-upper:
-	@$(call _mkstdirs)
 	@echo "[CDS] Place init upper"
+	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/3_place_init_upper.log,LEF_FILES="$(LEF_FILES_BOTTOM_COVER)" $(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_place_init_upper.log -files $(CADENCE_SCRIPTS_DIR)/innovus_place3D_init_upper.tcl)
 
 .PHONY: cds-place-init-bottom
 cds-place-init-bottom:
-	@$(call _mkstdirs)
 	@echo "[CDS] Place init bottom"
+	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/3_place_init_bottom.log,LEF_FILES="$(LEF_FILES_UPPER_COVER)" $(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_place_init_bottom.log -files $(CADENCE_SCRIPTS_DIR)/innovus_place3D_init_bottom.tcl)
 
 .PHONY: cds-place-upper
 cds-place-upper:
-	@$(call _mkstdirs)
 	@echo "[CDS] Loop preCTS opt upper (allow net: $${TIER_ALLOW_NET:-all})"
+	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/3_place_upper$(ALLOW_NET_TAG).log,LEF_FILES="$(LEF_FILES_BOTTOM_COVER)" $(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_place_upper$(ALLOW_NET_TAG).log -files $(CADENCE_SCRIPTS_DIR)/innovus_place3D_upper.tcl)
 
 .PHONY: cds-place-bottom
 cds-place-bottom:
-	@$(call _mkstdirs)
 	@echo "[CDS] Loop preCTS opt bottom (allow net: $${TIER_ALLOW_NET:-all})"
+	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/3_place_bottom$(ALLOW_NET_TAG).log,LEF_FILES="$(LEF_FILES_UPPER_COVER)" $(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_place_bottom$(ALLOW_NET_TAG).log -files $(CADENCE_SCRIPTS_DIR)/innovus_place3D_bottom.tcl)
 
 .PHONY: cds-gp2lg
 cds-gp2lg:
-	@$(call _mkstdirs)
 	@echo "[CDS] GP2LG handoff copy"
+	@$(call _mkstdirs)
 	@tclsh "$(CADENCE_SCRIPTS_DIR)/handoff_copy_gp2lg.tcl"
 
 .PHONY: cds-legalize-upper
 cds-legalize-upper:
-	@$(call _mkstdirs)
 	@echo "[CDS] Legalize upper"
+	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/3_5_lg_upper.log,LEF_FILES="$(LEF_FILES_BOTTOM_COVER)" $(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_opt_lg_upper.log -files $(CADENCE_SCRIPTS_DIR)/innovus_opt_lg_upper.tcl)
 
 .PHONY: cds-legalize-bottom
 cds-legalize-bottom:
-	@$(call _mkstdirs)
 	@echo "[CDS] Legalize bottom"
+	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/3_4_lg_bottom.log,LEF_FILES="$(LEF_FILES_UPPER_COVER)" $(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_opt_lg_bottom.log -files $(CADENCE_SCRIPTS_DIR)/innovus_opt_lg_bottom.tcl)
 
 .PHONY: cds-cts
 cds-cts:
-	@$(call _mkstdirs)
 	@echo "[CDS] CTS (owner-tree -> receive-opt -> finalize)"
+	@$(call _mkstdirs)
 	@$(MAKE) --no-print-directory DESIGN_CONFIG="$(DESIGN_CONFIG)" cds-cts-owner-tree
 	@$(MAKE) --no-print-directory DESIGN_CONFIG="$(DESIGN_CONFIG)" cds-cts-receive-opt
 	@$(MAKE) --no-print-directory DESIGN_CONFIG="$(DESIGN_CONFIG)" cds-cts-finalize
@@ -763,33 +772,33 @@ cds-cts:
 # Explicit legacy CTS target for robustness comparison.
 .PHONY: cds-cts-legacy
 cds-cts-legacy:
-	@$(call _mkstdirs)
 	@echo "[CDS] Legacy CTS"
+	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/4_1_cts.log,SC_FILE="$(SC_LEF_CTS)" SC_LEF="$(SC_LEF_CTS)" LEF_FILES="$(LEF_FILES_CTS)" ADDITIONAL_LEFS="$(ADDITIONAL_LEFS_CTS)" COVER_LAYER="$(COVER_LAYER)" $(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_3d_cts.log -files $(CADENCE_SCRIPTS_DIR)/innovus_3d_cts_legacy.tcl)
 
 # Internal staged CTS targets. The public interface should stay cds-cts.
 .PHONY: cds-cts-owner-tree
 cds-cts-owner-tree:
-	@$(call _mkstdirs)
 	@echo "[CDS] CTS owner-tree (LEF/COVER: LEF_FILES_CTS_OWNER)"
+	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/4_0_cts_owner_tree.log,LEF_FILES="$(LEF_FILES_CTS_OWNER)" COVER_LAYER="$(COVER_LAYER)" $(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_3d_cts_owner_tree.log -files $(CADENCE_SCRIPTS_DIR)/innovus_3d_cts_owner_tree.tcl)
 
 .PHONY: cds-cts-receive-opt
 cds-cts-receive-opt:
-	@$(call _mkstdirs)
 	@echo "[CDS] CTS receive-opt (LEF/COVER: LEF_FILES_CTS_RECEIVE)"
+	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/4_1_cts_receive_opt.log,LEF_FILES="$(LEF_FILES_CTS_RECEIVE)" COVER_LAYER="$(COVER_LAYER)" $(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_3d_cts_receive_opt.log -files $(CADENCE_SCRIPTS_DIR)/innovus_3d_cts_receive_opt.tcl)
 
 .PHONY: cds-cts-finalize
 cds-cts-finalize:
-	@$(call _mkstdirs)
 	@echo "[CDS] CTS finalize (LEF/COVER: LEF_FILES_CTS_FINALIZE)"
+	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/4_3_cts_finalize.log,LEF_FILES="$(LEF_FILES_CTS_FINALIZE)" COVER_LAYER="$(COVER_LAYER)" $(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_3d_cts_finalize.log -files $(CADENCE_SCRIPTS_DIR)/innovus_3d_cts_finalize.tcl)
 
 .PHONY: cds-route-new
 cds-route-new:
-	@$(call _mkstdirs)
 	@echo "[CDS] Route (route-only -> postroute-receive -> postroute-owner)"
+	@$(call _mkstdirs)
 	@$(MAKE) --no-print-directory DESIGN_CONFIG="$(DESIGN_CONFIG)" cds-route-only
 	@$(MAKE) --no-print-directory DESIGN_CONFIG="$(DESIGN_CONFIG)" cds-postroute-receive
 	@$(MAKE) --no-print-directory DESIGN_CONFIG="$(DESIGN_CONFIG)" cds-postroute-owner
@@ -799,33 +808,33 @@ cds-route-new:
 # Explicit legacy route target for robustness comparison.
 .PHONY: cds-route
 cds-route:
-	@$(call _mkstdirs)
 	@echo "[CDS] Legacy route"
+	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/5_route.log,LEF_FILES="$(LEF_FILES_ROUTE)" $(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_3d_route.log -files $(CADENCE_SCRIPTS_DIR)/innovus_3d_route_legacy.tcl)
 
 # Internal staged route targets. The public interface should stay cds-route.
 .PHONY: cds-route-only
 cds-route-only:
-	@$(call _mkstdirs)
 	@echo "[CDS] Route only (LEF/COVER: LEF_FILES_ROUTE_ONLY)"
+	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/5_0_route.log,LEF_FILES="$(LEF_FILES_ROUTE_ONLY)" $(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_3d_route_only.log -files $(CADENCE_SCRIPTS_DIR)/innovus_3d_route_only.tcl)
 
 .PHONY: cds-postroute-receive
 cds-postroute-receive:
-	@$(call _mkstdirs)
 	@echo "[CDS] PostRoute receive (LEF/COVER: LEF_FILES_POSTROUTE_RECEIVE)"
+	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/5_1_postroute_receive.log,LEF_FILES="$(LEF_FILES_POSTROUTE_RECEIVE)" $(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_3d_postroute_receive.log -files $(CADENCE_SCRIPTS_DIR)/innovus_3d_postroute_receive.tcl)
 
 .PHONY: cds-postroute-owner
 cds-postroute-owner:
-	@$(call _mkstdirs)
 	@echo "[CDS] PostRoute owner (LEF/COVER: LEF_FILES_POSTROUTE_OWNER)"
+	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/5_2_postroute_owner.log,LEF_FILES="$(LEF_FILES_POSTROUTE_OWNER)" $(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_3d_postroute_owner.log -files $(CADENCE_SCRIPTS_DIR)/innovus_3d_postroute_owner.tcl)
 
 .PHONY: cds-final
 cds-final:
-	@$(call _mkstdirs)
 	@echo "[CDS] Final"
+	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/6_final.log,$(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_3d_final.log -files $(CADENCE_SCRIPTS_DIR)/innovus_3d_final.tcl)
 	@echo "[CDS] Extract eval JSON"
 	@$(PYTHON_EXE) "$(EXTRACT_EVAL_METRICS_PY)" \
@@ -834,8 +843,8 @@ cds-final:
 
 .PHONY: cds-restore
 cds-restore:
-	@$(call _mkstdirs)
 	@echo "[CDS] Restore"
+	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/6_final-re.log,$(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_3d_final-re.log -files $(CADENCE_SCRIPTS_DIR)/innovus_3d_final-re.tcl)
 	@echo "[CDS] Extract eval JSON"
 	@$(PYTHON_EXE) "$(EXTRACT_EVAL_METRICS_PY)" \

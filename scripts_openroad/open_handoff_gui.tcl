@@ -216,6 +216,10 @@ if {[info exists ::env(LEF_FILES)]} {
 
 pin3d_load_design_for_gui $design_file $sdc_file
 
+source $::env(OPENROAD_SCRIPTS_DIR)/build_hierarchy.tcl
+set summary [::hier_builder::rebuild_db_hierarchy_from_block]
+puts "\[INFO\]\[GUI\] restored module hierarchy: modules=[dict get $summary module_count] modinsts=[dict get $summary modinst_count] assigned_insts=[dict get $summary assigned_inst_count]"
+
 if {[llength [info commands gui::show]] > 0} {
   gui::show
 }
