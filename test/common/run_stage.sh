@@ -66,7 +66,7 @@ export RESULTS_DIR="./results/${ENABLEMENT}/${DESIGN_NICKNAME}/${FLOW_VARIANT}"
 
 select_design_config() {
   case "$1" in
-    ord-3d-flow-2dpart|cds-3d-flow-2dpart)
+    ord-3d-flow-2dpart|cds-3d-flow-2dpart|ord-tier-partition|cds-tier-partition)
       echo "${DESIGN_CONFIG_2D}"
       ;;
     *)

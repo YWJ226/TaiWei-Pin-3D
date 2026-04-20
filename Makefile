@@ -635,22 +635,8 @@ cds-3d-flow-2dpart:
 
 .PHONY: cds-tier-partition
 cds-tier-partition:
-	@echo "[CDS] Tier partition (OpenROAD in Cadence flow)"
-	@$(call _mkstdirs)
-	@echo "[CDS] Copying 2D artifacts to $(3D_PLATFORM) directory"
-	@{ \
-	  NEW_RESULTS_DIR="$(WORK_HOME)/results/$(3D_PLATFORM)/$(DESIGN_NICKNAME)/$(FLOW_VARIANT)"; \
-	  mkdir -p "$$NEW_RESULTS_DIR"; \
-	  cp -rf "$(RESULTS_DIR)"/* "$$NEW_RESULTS_DIR"; \
-	  echo "[CDS] Running TritonPart locally..."; \
-	  export RESULTS_DIR="$$NEW_RESULTS_DIR"; \
-	  tmp_log="$(LOG_DIR)/2_tritonpart.log.tmp"; \
-	  rm -f "$$tmp_log"; \
-	  { $(TIME_CMD) $(OPENROAD_CMD) $(CADENCE_SCRIPTS_DIR)/tritonpart_tier_partition.tcl; } 2>&1 | tee "$$tmp_log"; \
-	  cmd_status=$${PIPESTATUS[0]}; \
-	  mv -f "$$tmp_log" "$(LOG_DIR)/2_tritonpart.log"; \
-	  exit $$cmd_status; \
-	}
+	@echo "[CDS] Tier partition via ord-tier-partition"
+	@$(MAKE) --no-print-directory DESIGN_CONFIG=$(DESIGN_CONFIG) ord-tier-partition
 
 .PHONY: cds-pre
 cds-pre:

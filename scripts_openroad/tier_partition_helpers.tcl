@@ -102,7 +102,7 @@ set fp_def [file join $::env(RESULTS_DIR) 2_2_floorplan_io.def]
 if {![file exists $fp_def]} {
   utl::error PAR 961 "Floorplan DEF not found: $fp_def"
 }
-read_def -floorplan_initialize $fp_def
+# read_def -floorplan_initialize $fp_def
 
 # ------------------------------------------------------------
 # ODB helpers: die area, dbu

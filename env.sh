@@ -20,6 +20,7 @@ export OPENROAD_EXE="${OPENROAD_EXE:-${ORFS_DIR}/tools/install/OpenROAD/bin/open
 export YOSYS_EXE="${YOSYS_EXE:-${ORFS_DIR}/tools/install/yosys/bin/yosys}"
 export STA_EXE="${STA_EXE:-${ORFS_DIR}/tools/install/OpenROAD/bin/sta}"
 
+module load cadence
 # Cadence toolchain
 export GENUS_EXE="${GENUS_EXE:-$(which genus)}"
 export INNOVUS_EXE="${INNOVUS_EXE:-$(which innovus)}"

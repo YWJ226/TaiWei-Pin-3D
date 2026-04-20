@@ -27,9 +27,10 @@ The most useful documents in this repository are:
 
 ### Supported Tools
 - **Open-source PD tools**: [ORFS-Research](https://github.com/ieee-ceda-datc/ORFS-Research) (ORD)
-  - **Tested commit**: `bd2904522e3a26d50f08ffbcb8a0c6017cc48ebd`
+  - **Tested ORFS-Research commit**: `568eb04da9173695d6bfc1b10ba868e0b6b8a9fa`
+  - **Bundled OpenROAD commit**: `305d3ba2ddfd00591924cc586ad408179f566afe`
   - Other versions may work but have not been fully validated. If you encounter issues, please open a GitHub issue in this repository.
-  - Note: the branch used in the paper differs from the public release; please use the commit above for reproducibility.
+  - Note: the branch used in the paper differs from the public release; please use the commits above for reproducibility.
 - **Commercial PD tools**: Cadence tool suite (CDS)
   - Innovus `v21.39`
   - Genus `v21.39`

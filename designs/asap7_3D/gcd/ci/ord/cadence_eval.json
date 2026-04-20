@@ -1,0 +1,46 @@
+{
+  "finish__design__core__area": {
+    "compare": "<=",
+    "value": 36.56664
+  },
+  "finish__design__instance__area__macro": {
+    "compare": "<=",
+    "value": 0
+  },
+  "finish__design__instance__area__stdcell": {
+    "compare": "<=",
+    "value": 54.19386
+  },
+  "finish__erc__violations": {
+    "compare": "<=",
+    "value": 0
+  },
+  "finish__fep__violations": {
+    "compare": "<=",
+    "value": 8
+  },
+  "finish__power__total": {
+    "compare": "<=",
+    "value": 0.6945182
+  },
+  "finish__route__cross_tier_nets__all": {
+    "compare": "<=",
+    "value": 97
+  },
+  "finish__route__drc_errors": {
+    "compare": "<=",
+    "value": 151
+  },
+  "finish__route__hb_via__count__phys": {
+    "compare": "<=",
+    "value": 69
+  },
+  "finish__timing__setup__tns": {
+    "compare": ">=",
+    "value": -0.065
+  },
+  "finish__timing__setup__ws": {
+    "compare": ">=",
+    "value": -0.021
+  }
+}

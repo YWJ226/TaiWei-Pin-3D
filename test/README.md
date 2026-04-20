@@ -56,6 +56,49 @@ Behavior:
 - `ord` evaluation runs `cds-final`
 - `cds` evaluation runs `cds-restore`
 
+This asymmetric contract is the supported CI policy:
+
+- `ord` means OpenROAD-origin results with native OpenROAD metrics plus Cadence `cds-final` eval
+- `cds` means Cadence-origin results with native Cadence metrics plus Cadence `cds-restore` eval
+- `cds -> ord-final` and `cds -> cds-final(defIn)` are research-only paths, not blocking CI
+
+### Run internal CI regression
+
+- `python3 util/run_internal_ci.py <smoke|full>`
+
+Examples:
+
+```bash
+python3 util/run_internal_ci.py smoke
+python3 util/run_internal_ci.py full --jobs 6
+python3 util/run_internal_ci.py smoke --flow ord
+python3 util/run_internal_ci.py smoke --host-list hnode19 hnode21 --max-jobs-per-host 1
+python3 util/run_internal_ci.py smoke --research-cds-openroad-eval
+```
+
+Behavior:
+
+- runs supported contracts only by default:
+  - `ord` flow -> native OpenROAD metrics + Cadence `cds-final` eval
+  - `cds` flow -> native Cadence metrics + Cadence `cds-restore` eval
+- default CI variants are derived from `--variant-base`:
+  - `ORD_CI__ord` means the `ord` flow-origin result directory for a given `tech/design`
+  - `ORD_CI__cds` means the `cds` flow-origin result directory for the same `tech/design`
+  - in practice, each `tech/design` can therefore have two CI handoff trees under `logs/`, `results/`, and `reports/`
+- reuses `run_experiments.py` for the supported flow/eval path
+- compares generated JSONs against baselines under:
+  - supported `ord` baselines:
+    - `designs/<tech>/<case>/ci/ord/openroad_eval.json`
+    - `designs/<tech>/<case>/ci/ord/cadence_eval.json`
+    - legacy fallback:
+      - `designs/<tech>/<case>/openroad_eval.json`
+      - `designs/<tech>/<case>/cadence_eval.json`
+  - supported `cds` baseline:
+    - `designs/<tech>/<case>/ci/cds/cadence_eval.json`
+- if `--research-cds-openroad-eval` is enabled, it also compares against:
+  - `designs/<tech>/<case>/ci/research/cds/openroad_eval.json`
+- if a baseline JSON is missing, seeds it from the current run automatically
+
 ## OpenROAD Entry Points
 
 ### Full 3D OpenROAD flow
