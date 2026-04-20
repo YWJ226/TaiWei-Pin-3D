@@ -93,6 +93,7 @@ export OPENROAD_EXE ?= $(shell which openroad)
 export YOSYS_EXE    ?= $(shell which yosys)
 export STA_EXE      ?= $(shell which sta)
 export PYTHON_EXE   ?= $(shell which python3)
+export EXTRACT_EVAL_METRICS_PY ?= $(UTILS_DIR)/extract_eval_metrics.py
 
 OPENROAD_ARGS = -no_init -threads ${NUM_CORES} -exit
 OPENROAD_CMD  = $(OPENROAD_EXE) $(OPENROAD_ARGS)
@@ -469,6 +470,12 @@ ord-final:
 	@$(call _mkstdirs)
 	@echo "[ORD] final_report ..."
 	$(call _run_with_tmp_log,$(LOG_DIR)/6_report.log,LEF_FILES="$(LEF_FILES)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/final_report.tcl)
+	@echo "[ORD] Extract eval JSON"
+	@$(PYTHON_EXE) "$(EXTRACT_EVAL_METRICS_PY)" \
+		--openroad-log-dir "$(LOG_DIR)" \
+		--openroad-report-dir "$(REPORTS_DIR)" \
+		--openroad-result-dir "$(RESULTS_DIR)" \
+		--openroad-output "$(REPORTS_DIR)/openroad_eval.json"
 
 .PHONY: ord-3d-flow-2dpart
 ord-3d-flow-2dpart:
@@ -820,12 +827,20 @@ cds-final:
 	@$(call _mkstdirs)
 	@echo "[CDS] Final"
 	$(call _run_with_tmp_log,$(LOG_DIR)/6_final.log,$(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_3d_final.log -files $(CADENCE_SCRIPTS_DIR)/innovus_3d_final.tcl)
+	@echo "[CDS] Extract eval JSON"
+	@$(PYTHON_EXE) "$(EXTRACT_EVAL_METRICS_PY)" \
+		--innovus-summary "$(LOG_DIR)/final_summary.txt" \
+		--innovus-output "$(REPORTS_DIR)/innovus_eval.json"
 
 .PHONY: cds-restore
 cds-restore:
 	@$(call _mkstdirs)
 	@echo "[CDS] Restore"
 	$(call _run_with_tmp_log,$(LOG_DIR)/6_final-re.log,$(TIME_CMD) $(INNOVUS_CMD) -overwrite -log $(LOG_DIR)/cadence_innovus_3d_final-re.log -files $(CADENCE_SCRIPTS_DIR)/innovus_3d_final-re.tcl)
+	@echo "[CDS] Extract eval JSON"
+	@$(PYTHON_EXE) "$(EXTRACT_EVAL_METRICS_PY)" \
+		--innovus-summary "$(LOG_DIR)/final_summary.txt" \
+		--innovus-output "$(REPORTS_DIR)/innovus_eval.json"
 
 .PHONY: clean_all
 clean_all:

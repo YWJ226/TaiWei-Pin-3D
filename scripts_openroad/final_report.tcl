@@ -36,7 +36,29 @@ deleteRoutingObstructions
 
 set final_cross_tier_report [file join $LOG_DIR "cross_tier_nets.list"]
 set final_cross_tier_summary [file join $LOG_DIR "cross_tier_nets.summary.rpt"]
+set saved_metric_report_mode_exists [info exists ::env(PIN3D_METRIC_REPORT_MODE)]
+if {$saved_metric_report_mode_exists} {
+  set saved_metric_report_mode $::env(PIN3D_METRIC_REPORT_MODE)
+}
+set saved_skip_heavy_exists [info exists ::env(PIN3D_SKIP_HEAVY_METRIC_REPORTS)]
+if {$saved_skip_heavy_exists} {
+  set saved_skip_heavy $::env(PIN3D_SKIP_HEAVY_METRIC_REPORTS)
+}
+if {[_pin3d_metric_report_mode] eq "off"} {
+  unset -nocomplain ::env(PIN3D_SKIP_HEAVY_METRIC_REPORTS)
+  set ::env(PIN3D_METRIC_REPORT_MODE) "summary"
+}
 set final_cross_tier_stats [report_cross_tier_snapshot $final_cross_tier_report -label "final"]
+if {$saved_skip_heavy_exists} {
+  set ::env(PIN3D_SKIP_HEAVY_METRIC_REPORTS) $saved_skip_heavy
+} else {
+  unset -nocomplain ::env(PIN3D_SKIP_HEAVY_METRIC_REPORTS)
+}
+if {$saved_metric_report_mode_exists} {
+  set ::env(PIN3D_METRIC_REPORT_MODE) $saved_metric_report_mode
+} else {
+  unset -nocomplain ::env(PIN3D_METRIC_REPORT_MODE)
+}
 set fh [open $final_cross_tier_summary w]
 puts $fh [_cross_tier_stats_brief $final_cross_tier_stats]
 puts $fh [format "cross_tier_all %d" [dict get $final_cross_tier_stats cross_tier_all]]
@@ -69,12 +91,16 @@ if {[info exists ::env(RCX_RULES)]} {
   puts "OpenRCX is not enabled for this platform."
 }
 
+_configure_openroad_power_activity_for_eval
+
 source $::env(OPENROAD_SCRIPTS_DIR)/report_metrics.tcl
-report_metrics 6 "finish" false false
+report_metrics 6 "finish" true false
 set finish_report [file join $REPORTS_DIR "6_finish.rpt"]
 set wire_report [file join $REPORTS_DIR "6_wire_length.rpt"]
-_or_capture_cmd_to_file $wire_report {report_wire_length -detailed_route -summary}
-_write_openroad_final_summary $SUMMARY_OUT $finish_report $wire_report $final_cross_tier_stats
+set drc_report [file join $REPORTS_DIR "5_route_drc.rpt"]
+report_wire_length -detailed_route -summary
+report_wire_length -net {*} -detailed_route -file $wire_report
+_write_openroad_final_summary $SUMMARY_OUT $finish_report $wire_report $final_cross_tier_stats $drc_report
 puts "Final summary written to $SUMMARY_OUT"
 
 set display_ok [expr {[info exists ::env(DISPLAY)] && $::env(DISPLAY) ne ""}]

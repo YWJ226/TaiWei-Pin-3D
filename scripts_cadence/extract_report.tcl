@@ -368,6 +368,145 @@ proc extract_cross_tier_nets {list_rpt_path args} {
 }
 
 # --------------------------
+# Cross Tier Net Count (Eval / Final Summary)
+# Rule:
+#   - Preserve top-level IO presence as its own dimension even when a term's
+#     routed pin layers resolve cleanly to upper/bottom. This mirrors the
+#     OpenROAD final evaluation view and is used only for post-route metrics,
+#     not for stage-time HBT estimation.
+#   - cross_tier_all counts every non-unknown cross-tier category:
+#       1) upper + bottom
+#       2) upper + IO
+#       3) bottom + IO
+#       4) upper + bottom + IO
+# Options:
+#   -clock_only 1 : report only clock-related cross-tier nets
+# --------------------------
+proc _report_eval_net_tier_presence {net_ptr} {
+  set has_upper 0
+  set has_bottom 0
+  set has_io 0
+  set has_unknown 0
+
+  foreach term [dbGet -e $net_ptr.terms] {
+    set has_io 1
+    switch -- [tier_classify_term_ptr $term] {
+      upper {
+        set has_upper 1
+      }
+      bottom {
+        set has_bottom 1
+      }
+      default {
+      }
+    }
+  }
+
+  foreach inst_term [dbGet -e $net_ptr.instTerms] {
+    switch -- [tier_classify_inst_term_ptr $inst_term] {
+      upper {
+        set has_upper 1
+      }
+      bottom {
+        set has_bottom 1
+      }
+      split_buffer {
+        continue
+      }
+      default {
+        set has_unknown 1
+      }
+    }
+  }
+
+  return [list $has_upper $has_bottom $has_io $has_unknown]
+}
+
+proc extract_cross_tier_net_stats_eval {list_rpt_path args} {
+  array set opt {
+    -clock_only 0
+  }
+  if {([llength $args] % 2) != 0} {
+    error "extract_cross_tier_net_stats_eval: args must be key-value pairs, got: $args"
+  }
+  foreach {k v} $args {
+    if {![info exists opt($k)]} {
+      error "extract_cross_tier_net_stats_eval: unknown option $k"
+    }
+    set opt($k) $v
+  }
+
+  set report_mode [_pin3d_metric_report_mode]
+  set emit_detail [expr {$report_mode eq "full"}]
+  set emit_report [expr {$report_mode ne "off"}]
+
+  set total_cross_tier 0
+  array set category_counts {
+    Upper_Bottom    0
+    Upper_IO        0
+    Bottom_IO       0
+    Upper_Bottom_IO 0
+    Unknown_Tier    0
+  }
+
+  set report_lines [list]
+  if {$opt(-clock_only)} {
+    lappend report_lines "# Clock-Only Cross-Tier Net Report (Eval)"
+  } else {
+    lappend report_lines "# Cross-Tier Net Report (Eval)"
+  }
+  if {$emit_detail} {
+    lappend report_lines [format "%-40s | %s" "Net Name" "Type"]
+    lappend report_lines "-----------------------------------------|------------------"
+  } else {
+    lappend report_lines "# detail_omitted 1"
+    lappend report_lines [format "# report_mode %s" [expr {$report_mode eq "off" ? "off" : "summary"}]]
+  }
+
+  foreach net [dbGet top.nets] {
+    if {$opt(-clock_only) && ![_report_is_clock_net_ptr $net]} {
+      continue
+    }
+
+    lassign [_report_eval_net_tier_presence $net] has_upper has_bottom has_io has_unknown
+    set net_type [_cross_tier_category_from_presence $has_upper $has_bottom $has_io $has_unknown]
+
+    if {$net_type ne ""} {
+      if {$net_type ne "Unknown_Tier"} {
+        incr total_cross_tier
+      }
+      incr category_counts($net_type)
+      if {$emit_detail} {
+        lappend report_lines [format "%-40s | %s" [dbGet $net.name] $net_type]
+      }
+    }
+  }
+
+  lappend report_lines ""
+  lappend report_lines [format "Total Cross-Tier Nets: %d" $total_cross_tier]
+  lappend report_lines "Category Totals:"
+  foreach key {Upper_Bottom Upper_IO Bottom_IO Upper_Bottom_IO Unknown_Tier} {
+    lappend report_lines [format "  %-18s %d" $key $category_counts($key)]
+  }
+
+  if {$list_rpt_path ne "" && $emit_report} {
+    set fh [open $list_rpt_path w]
+    foreach line $report_lines {
+      puts $fh $line
+    }
+    close $fh
+  }
+
+  return [dict create \
+    cross_tier_all $total_cross_tier \
+    upper_bottom $category_counts(Upper_Bottom) \
+    upper_io $category_counts(Upper_IO) \
+    bottom_io $category_counts(Bottom_IO) \
+    upper_bottom_io $category_counts(Upper_Bottom_IO) \
+    unknown $category_counts(Unknown_Tier)]
+}
+
+# --------------------------
 # FEP
 # --------------------------
 proc extract_fep {report_file_path} {
@@ -562,7 +701,7 @@ proc _extract_postRoute {outdir} {
   
   # Generate report inside outdir
   set cross_tier_rpt [file join $outdir "cross_tier_nets.list"]
-  set cross_tier_stats [extract_cross_tier_net_stats $cross_tier_rpt]
+  set cross_tier_stats [extract_cross_tier_net_stats_eval $cross_tier_rpt]
   set cross_tier_cnt [dict get $cross_tier_stats cross_tier_all]
   set cross_tier_upper_bottom [dict get $cross_tier_stats upper_bottom]
   set cross_tier_upper_io [dict get $cross_tier_stats upper_io]
@@ -644,7 +783,9 @@ proc extract_report {args} {
     puts $fh [format "%-26s %s" "DRC Violations"         [lindex $f 10]]
     puts $fh [format "%-26s %s" "FEP Violations"         [lindex $f 11]]
     puts $fh [format "%-26s %s" "HB VIA Count (Phys)"         [lindex $f 12]]
-    puts $fh [format "%-26s %s" "Cross-Tier Nets (U/B only)" [lindex $f 13]]
+    set cross_tier_bridge [expr {int([lindex $f 14]) + int([lindex $f 17])}]
+    puts $fh [format "%-26s %s" "Cross-Tier Nets (All)"      [lindex $f 13]]
+    puts $fh [format "%-26s %s" "Cross-Tier Nets (U/B bridge)" $cross_tier_bridge]
     puts $fh ""
     puts $fh "=== Cross-Tier Breakdown ==="
     puts $fh [format "%-26s %s" "Upper_Bottom"           [lindex $f 14]]
