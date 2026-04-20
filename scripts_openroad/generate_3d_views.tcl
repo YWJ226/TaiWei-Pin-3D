@@ -29,7 +29,7 @@ proc ::pin3d::normalize_name {name} {
   if {[string index $t 0] eq "\\"} {
     set t [string range $t 1 end]
   }
-  set t [string map [list {\[} {[} {\]} {]}] $t]
+  set t [string map [list {\/} {/} {\[} {[} {\]} {]}] $t]
   return $t
 }
 

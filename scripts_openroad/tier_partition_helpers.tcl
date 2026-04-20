@@ -96,7 +96,7 @@ if {$::PIN_PARTITION_MODE_B != 0 && $::PIN_PARTITION_MODE_B != 1} {
 # ------------------------------------------------------------
 # Load design + floorplan
 # ------------------------------------------------------------
-load_design 2_2_floorplan_io.v 1_synth.sdc "Start Triton Partitioning (N-point sweep)"
+load_design 2_2_floorplan_io.odb 1_synth.sdc "Start Triton Partitioning (N-point sweep)"
 
 set fp_def [file join $::env(RESULTS_DIR) 2_2_floorplan_io.def]
 if {![file exists $fp_def]} {
