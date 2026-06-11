@@ -9,12 +9,14 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+import run_experiments_remote as remote
 from run_experiments import discover_available_tasks
 
 
@@ -113,6 +115,14 @@ def parse_args() -> argparse.Namespace:
         help="Skip running experiments and compare existing outputs only.",
     )
     parser.add_argument(
+        "--detach",
+        action="store_true",
+        help=(
+            "Launch this internal CI invocation via the same detached local "
+            "wrapper backend used for per-task jobs, then exit immediately."
+        ),
+    )
+    parser.add_argument(
         "--research-cds-openroad-eval",
         action="store_true",
         help=(
@@ -192,6 +202,66 @@ def _common_runner_args(args: argparse.Namespace) -> list[str]:
     elif args.mode == "smoke":
         runner_args.extend(["--case", "gcd"])
     return runner_args
+
+
+def _strip_flag(argv: list[str], flag: str) -> list[str]:
+    out: list[str] = []
+    for arg in argv:
+        if arg == flag:
+            continue
+        out.append(arg)
+    return out
+
+
+def _launcher_tag(args: argparse.Namespace) -> str:
+    jobs = args.jobs if args.jobs is not None else "default"
+    stamp = time.strftime("%Y%m%d_%H%M%S")
+    return f"internal_ci_{args.mode}_{args.flow}_jobs{jobs}_{stamp}"
+
+
+def _wait_for_launch_snapshot(launch: remote.RemoteLaunch,
+                              *,
+                              timeout_s: float = 3.0
+                              ) -> remote.RemoteLaunchSnapshot:
+    deadline = time.time() + timeout_s
+    snapshot = remote.snapshot_local_launch(launch)
+    while time.time() < deadline and snapshot.pid is None:
+        time.sleep(0.2)
+        snapshot = remote.snapshot_local_launch(launch)
+    return snapshot
+
+
+def _detach_self(args: argparse.Namespace) -> int:
+    repo_root = args.repo_root.resolve()
+    tag = _launcher_tag(args)
+    log_path = repo_root / "run_logs" / f"{tag}.log"
+    pid_path = repo_root / "run_logs" / f"{tag}.pid"
+    job_path = repo_root / "run_logs" / f"{tag}.job"
+    dispatch_dir = repo_root / "run_logs" / "dispatch" / "internal_ci" / tag
+    child_argv = [
+        sys.executable,
+        str(repo_root / "util" / "run_internal_ci.py"),
+        *_strip_flag(sys.argv[1:], "--detach"),
+    ]
+    launch = remote.submit_local_command(
+        repo_root=repo_root,
+        dispatch_dir=dispatch_dir,
+        command=child_argv,
+        log_path=log_path,
+        stage="launcher",
+        phase_name="ci",
+        env=os.environ.copy(),
+    )
+    snapshot = _wait_for_launch_snapshot(launch)
+    job_path.write_text(f"{launch.job_id}\n", encoding="utf-8")
+    if snapshot.pid is not None:
+        pid_path.write_text(f"{snapshot.pid}\n", encoding="utf-8")
+    print(f"[ci] detached launcher submitted: {launch.job_id}")
+    print(f"[ci] log: {log_path}")
+    if snapshot.pid is not None:
+        print(f"[ci] pid: {snapshot.pid}")
+    print(f"[ci] dispatch dir: {dispatch_dir}")
+    return 0
 
 
 def _run_subprocess(cmd: list[str], env: dict[str, str], cwd: Path) -> None:
@@ -286,6 +356,8 @@ def _run_openroad_eval_on_cds(
 def main() -> int:
     args = parse_args()
     repo_root = args.repo_root.resolve()
+    if args.detach:
+        return _detach_self(args)
     flows = ["ord", "cds"] if args.flow == "all" else [args.flow]
     tasks = _selected_cases(repo_root, flows, args.mode, args.tech, args.case)
     if not tasks:
@@ -306,10 +378,6 @@ def main() -> int:
                 run_cmd.extend(["--host-list", *args.host_list])
                 run_cmd.extend(["--max-jobs-per-host", str(args.max_jobs_per_host)])
             _run_subprocess(run_cmd, env=env, cwd=repo_root)
-
-            if args.host_list:
-                monitor_cmd = runner + ["--flow", flow] + common_args + ["--monitor"]
-                _run_subprocess(monitor_cmd, env=env, cwd=repo_root)
 
             status_failures = _check_statuses(repo_root, tasks, flow)
             if status_failures:

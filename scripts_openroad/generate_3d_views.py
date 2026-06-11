@@ -46,6 +46,74 @@ def _try_float(val) -> Optional[float]:
     except (TypeError, ValueError):
         return None
 
+def _require_dict(value, context: str) -> dict:
+    if not isinstance(value, dict):
+        raise ValueError(f"cell map format error: '{context}' must be a dict.")
+    return value
+
+def _require_str(value, context: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"cell map format error: '{context}' must be a non-empty string.")
+    return value
+
+def _require_pin_map(value, context: str) -> Dict[str, str]:
+    mapping = _require_dict(value, context)
+    out: Dict[str, str] = {}
+    for src, dst in mapping.items():
+        if not isinstance(src, str) or not isinstance(dst, str) or not src or not dst:
+            raise ValueError(f"cell map format error: '{context}' entries must be non-empty strings.")
+        out[src] = dst
+    return out
+
+def _parse_const_pins(value, context: str) -> Dict[str, str]:
+    if value is None:
+        return {}
+    mapping = _require_dict(value, context)
+    out: Dict[str, str] = {}
+    for pin, const_value in mapping.items():
+        if not isinstance(pin, str) or not pin:
+            raise ValueError(f"cell map format error: '{context}' pins must be non-empty strings.")
+        if not isinstance(const_value, str) or not const_value:
+            raise ValueError(f"cell map format error: '{context}.{pin}' must be a non-empty string.")
+        out[pin] = const_value
+    return out
+
+def _tier_name(die: int) -> str:
+    if die == 0:
+        return "upper"
+    if die == 1:
+        return "bottom"
+    raise ValueError(f"invalid die label {die!r}; expected 0 or 1")
+
+def _tier_pin_map(
+    die: int,
+    base: str,
+    base_to_bottom_pin_map: Dict[str, Dict[str, str]],
+    base_to_upper_pin_map: Dict[str, Dict[str, str]],
+) -> Dict[str, str]:
+    table = base_to_upper_pin_map if die == 0 else base_to_bottom_pin_map
+    tier = _tier_name(die)
+    if base not in table:
+        raise ValueError(f"cell map missing {tier}.pin_map for base cell '{base}'.")
+    return table[base]
+
+def _tier_const_pins(
+    die: int,
+    base: str,
+    base_to_bottom_const_pins: Dict[str, Dict[str, str]],
+    base_to_upper_const_pins: Dict[str, Dict[str, str]],
+) -> Dict[str, str]:
+    table = base_to_upper_const_pins if die == 0 else base_to_bottom_const_pins
+    return table.get(base, {})
+
+def _map_pin_name(pin_map: Dict[str, str], pin: str) -> Optional[str]:
+    if pin in pin_map:
+        return pin_map[pin]
+    bus_match = re.match(r"^(.+)(\[[^\]]+\])$", pin)
+    if bus_match and bus_match.group(1) in pin_map:
+        return pin_map[bus_match.group(1)] + bus_match.group(2)
+    return None
+
 # ------------------------------------------------------------
 # Partition file parsing
 # ------------------------------------------------------------
@@ -174,15 +242,21 @@ def rewrite_def_net_block(
     net_lines: List[str],
     part_map: Dict[str, int],
     inst2base: Dict[str, str],
-    base_to_pin_map: Dict[str, Dict[str, str]]
+    base_to_bottom_pin_map: Dict[str, Dict[str, str]],
+    base_to_upper_pin_map: Dict[str, Dict[str, str]],
+    has_cell_map: bool,
 ) -> List[str]:
     """
     Rewrite one DEF net block (from '-' to terminating ';'):
-      - Rewrite ( inst pin ) tuples for upper instances using pin_map.
+      - Rewrite ( inst pin ) tuples using the target tier pin_map.
       - Leave ( PIN xxx ) alone.
       - Leave coordinates ( x y ) alone because inst not in part_map.
     """
+    if not has_cell_map:
+        return net_lines
+
     text = "".join(net_lines)
+    errors: List[str] = []
 
     def repl(m) -> str:
         inst = m.group(1)
@@ -197,16 +271,26 @@ def rewrite_def_net_block(
 
         if die is None or base is None:
             return m.group(0)
-        pm = base_to_pin_map.get(base)
-        if not pm:
+
+        try:
+            pm = _tier_pin_map(die, base, base_to_bottom_pin_map, base_to_upper_pin_map)
+        except ValueError as exc:
+            errors.append(str(exc))
             return m.group(0)
 
-        if die == 0:  # upper
-            new_pin = pm.get(pin, pin)
-            return f"( {inst} {new_pin} )"
-        return m.group(0)
+        new_pin = _map_pin_name(pm, pin)
+        if new_pin is None:
+            errors.append(
+                f"cell map missing {_tier_name(die)} pin mapping for base cell '{base}' pin '{pin}'"
+                f" on DEF instance '{inst}'"
+            )
+            return m.group(0)
+
+        return f"( {inst} {new_pin} )"
 
     new_text = DEF_CONN_RE.sub(repl, text)
+    if errors:
+        raise ValueError("; ".join(errors))
     return new_text.splitlines(keepends=True)
 
 def rewrite_def(
@@ -215,12 +299,14 @@ def rewrite_def(
     part_map: Dict[str, int],
     base_to_bottom: Dict[str, str],
     base_to_upper: Dict[str, str],
-    base_to_pin_map: Dict[str, Dict[str, str]],
+    base_to_bottom_pin_map: Dict[str, Dict[str, str]],
+    base_to_upper_pin_map: Dict[str, Dict[str, str]],
+    has_cell_map: bool,
 ) -> None:
     """
     Rewrite DEF:
       - COMPONENTS: update master per inst->die using JSON macro mapping if available
-      - NETS: remap pins for upper instances using JSON pin_map
+      - NETS: remap pins using the target tier pin_map
     """
     try:
         lines = open(def_in, "r", encoding="utf-8", errors="ignore").readlines()
@@ -260,12 +346,14 @@ def rewrite_def(
                 new_master = master
                 if die is not None:
                     base = strip_tier_suffix(master)
-                    if die == 0 and base in base_to_upper:
+                    if not has_cell_map:
+                        new_master = base + ("_upper" if die == 0 else "_bottom")
+                    elif die == 0 and base in base_to_upper:
                         new_master = base_to_upper[base]
                     elif die == 1 and base in base_to_bottom:
                         new_master = base_to_bottom[base]
                     else:
-                        new_master = base + ("_upper" if die == 0 else "_bottom")
+                        raise ValueError(f"cell map missing {_tier_name(die)}.macro for base cell '{base}'")
 
                 out.append(f"{indent}- {inst_raw} {new_master}{rest}\n")
 
@@ -309,7 +397,14 @@ def rewrite_def(
                         i += 1
                         break
                     i += 1
-                new_block = rewrite_def_net_block(buf, part_map, inst2base, base_to_pin_map)
+                new_block = rewrite_def_net_block(
+                    buf,
+                    part_map,
+                    inst2base,
+                    base_to_bottom_pin_map,
+                    base_to_upper_pin_map,
+                    has_cell_map,
+                )
                 out.extend(new_block)
                 continue
             out.append(line)
@@ -421,15 +516,15 @@ VERILOG_INST_HDR_RE = re.compile(
 
 VERILOG_PORT_RE = re.compile(r"(\.\s*)([A-Za-z_][\w$]*)(\s*\()")
 
-def _append_extra_ports_instance(stmt: str, extra_pins: List[str]) -> str:
+def _append_const_ports_instance(stmt: str, const_pins: Dict[str, str]) -> str:
     """
-    Append .PIN(1'b0) for missing pins before the last ');' in stmt.
+    Append .PIN(CONST) bindings for missing pins before the last ');' in stmt.
     """
-    if not extra_pins:
+    if not const_pins:
         return stmt
 
     existing = {m.group(2) for m in VERILOG_PORT_RE.finditer(stmt)}
-    missing = [p for p in extra_pins if p not in existing]
+    missing = [(p, const_pins[p]) for p in const_pins if p not in existing]
     if not missing:
         return stmt
 
@@ -447,36 +542,45 @@ def _append_extra_ports_instance(stmt: str, extra_pins: List[str]) -> str:
             indent = m.group(1)
 
     ins = ""
-    for p in missing:
-        ins += f",\n{indent}.{p}(1'b0)"
+    for p, value in missing:
+        ins += f",\n{indent}.{p}({value})"
     return stmt[:k] + ins + stmt[k:]
 
 def parse_cell_map_json(cell_map_path: Optional[str]):
     base_to_bottom: Dict[str, str] = {}
     base_to_upper: Dict[str, str] = {}
-    base_to_pin_map: Dict[str, Dict[str, str]] = {}
-    base_to_upper_extra_pins: Dict[str, List[str]] = {}
+    base_to_bottom_pin_map: Dict[str, Dict[str, str]] = {}
+    base_to_upper_pin_map: Dict[str, Dict[str, str]] = {}
+    base_to_bottom_const_pins: Dict[str, Dict[str, str]] = {}
+    base_to_upper_const_pins: Dict[str, Dict[str, str]] = {}
     base_to_tier_areas: Dict[str, Tuple[float, float]] = {}
     has_heterogeneous_area_map = False
+    has_cell_map = False
 
     if not cell_map_path:
         return (
             base_to_bottom,
             base_to_upper,
-            base_to_pin_map,
-            base_to_upper_extra_pins,
+            base_to_bottom_pin_map,
+            base_to_upper_pin_map,
+            base_to_bottom_const_pins,
+            base_to_upper_const_pins,
             base_to_tier_areas,
             has_heterogeneous_area_map,
+            has_cell_map,
         )
     if not os.path.exists(cell_map_path):
-        print(f"[WARN] cell map JSON '{cell_map_path}' not found, skip mapping.")
+        print(f"[WARN] cell map JSON '{cell_map_path}' not found, use suffix-based homogeneous mapping.")
         return (
             base_to_bottom,
             base_to_upper,
-            base_to_pin_map,
-            base_to_upper_extra_pins,
+            base_to_bottom_pin_map,
+            base_to_upper_pin_map,
+            base_to_bottom_const_pins,
+            base_to_upper_const_pins,
             base_to_tier_areas,
             has_heterogeneous_area_map,
+            has_cell_map,
         )
 
     with open(cell_map_path, "r", encoding="utf-8") as f:
@@ -484,61 +588,58 @@ def parse_cell_map_json(cell_map_path: Optional[str]):
 
     cells = data.get("cells", {})
     if not isinstance(cells, dict):
-        print("[WARN] cell map JSON format error: 'cells' is not a dict.")
-        return (
-            base_to_bottom,
-            base_to_upper,
-            base_to_pin_map,
-            base_to_upper_extra_pins,
-            base_to_tier_areas,
-            has_heterogeneous_area_map,
-        )
+        raise ValueError("cell map JSON format error: 'cells' must be a dict.")
+    has_cell_map = True
 
     for key, cell in cells.items():
         if not isinstance(cell, dict):
-            continue
-        base = cell.get("base", key)
+            raise ValueError(f"cell map format error: cells.{key} must be a dict.")
 
-        bottom = cell.get("bottom", {})
-        upper  = cell.get("upper", {})
-        if isinstance(bottom, dict) and bottom.get("macro"):
-            base_to_bottom[base] = bottom["macro"]
-        if isinstance(upper, dict) and upper.get("macro"):
-            base_to_upper[base] = upper["macro"]
+        base_cfg = _require_dict(cell.get("base"), f"cells.{key}.base")
+        bottom = _require_dict(cell.get("bottom"), f"cells.{key}.bottom")
+        upper = _require_dict(cell.get("upper"), f"cells.{key}.upper")
 
-        pin_map = cell.get("pin_map", {})
-        if isinstance(pin_map, dict):
-            base_to_pin_map[base] = pin_map
+        base = _require_str(base_cfg.get("macro"), f"cells.{key}.base.macro")
+        base_to_bottom[base] = _require_str(bottom.get("macro"), f"cells.{key}.bottom.macro")
+        base_to_upper[base] = _require_str(upper.get("macro"), f"cells.{key}.upper.macro")
+        base_to_bottom_pin_map[base] = _require_pin_map(
+            bottom.get("pin_map"), f"cells.{key}.bottom.pin_map"
+        )
+        base_to_upper_pin_map[base] = _require_pin_map(
+            upper.get("pin_map"), f"cells.{key}.upper.pin_map"
+        )
 
-        upper_pins = upper.get("pins", []) if isinstance(upper, dict) else []
-        if isinstance(upper_pins, list):
-            mapped_upper = set(pin_map.values()) if isinstance(pin_map, dict) else set()
-            extra = [p for p in upper_pins if p not in mapped_upper]
-            if extra:
-                base_to_upper_extra_pins[base] = extra
+        bottom_const = _parse_const_pins(bottom.get("const_pins"), f"cells.{key}.bottom.const_pins")
+        if bottom_const:
+            base_to_bottom_const_pins[base] = bottom_const
+        upper_const = _parse_const_pins(upper.get("const_pins"), f"cells.{key}.upper.const_pins")
+        if upper_const:
+            base_to_upper_const_pins[base] = upper_const
 
-        if isinstance(bottom, dict) and isinstance(upper, dict):
-            bw = _try_float(bottom.get("width"))
-            bh = _try_float(bottom.get("height"))
-            uw = _try_float(upper.get("width"))
-            uh = _try_float(upper.get("height"))
-            if None not in (bw, bh, uw, uh):
-                bottom_area = bw * bh
-                upper_area = uw * uh
-                base_to_tier_areas[base] = (bottom_area, upper_area)
+        bw = _try_float(bottom.get("width"))
+        bh = _try_float(bottom.get("height"))
+        uw = _try_float(upper.get("width"))
+        uh = _try_float(upper.get("height"))
+        if None not in (bw, bh, uw, uh):
+            bottom_area = bw * bh
+            upper_area = uw * uh
+            base_to_tier_areas[base] = (bottom_area, upper_area)
 
-                bottom_macro = bottom.get("macro")
-                upper_macro = upper.get("macro")
-                if bottom_macro != upper_macro or abs(bottom_area - upper_area) > 1.0e-12:
-                    has_heterogeneous_area_map = True
+            bottom_macro = bottom.get("macro")
+            upper_macro = upper.get("macro")
+            if bottom_macro != upper_macro or abs(bottom_area - upper_area) > 1.0e-12:
+                has_heterogeneous_area_map = True
 
     return (
         base_to_bottom,
         base_to_upper,
-        base_to_pin_map,
-        base_to_upper_extra_pins,
+        base_to_bottom_pin_map,
+        base_to_upper_pin_map,
+        base_to_bottom_const_pins,
+        base_to_upper_const_pins,
         base_to_tier_areas,
         has_heterogeneous_area_map,
+        has_cell_map,
     )
 
 def rewrite_verilog(
@@ -547,16 +648,19 @@ def rewrite_verilog(
     part_map: Dict[str, int],
     base_to_bottom: Dict[str, str],
     base_to_upper: Dict[str, str],
-    base_to_pin_map: Dict[str, Dict[str, str]],
-    base_to_upper_extra_pins: Dict[str, List[str]],
+    base_to_bottom_pin_map: Dict[str, Dict[str, str]],
+    base_to_upper_pin_map: Dict[str, Dict[str, str]],
+    base_to_bottom_const_pins: Dict[str, Dict[str, str]],
+    base_to_upper_const_pins: Dict[str, Dict[str, str]],
+    has_cell_map: bool,
 ) -> None:
     """
     Robust rewrite for structural/gate-level Verilog instance statements.
     Works on full-file statement spans. Uses comment masking so indices align.
 
       - Rename module based on inst->die and JSON macro mapping
-      - For upper (die=0): port rename using pin_map
-      - For upper: bind extra pins to 1'b0 if missing
+      - Rename ports using the target tier pin_map
+      - Bind explicit const_pins when requested by map.json
     """
     try:
         text = open(v_in, "r", encoding="utf-8", errors="ignore").read()
@@ -599,30 +703,42 @@ def rewrite_verilog(
 
         module_base = strip_tier_suffix(module_tok)
 
-        if die == 0 and module_base in base_to_upper:
+        if not has_cell_map:
+            new_module = module_base + ("_upper" if die == 0 else "_bottom")
+        elif die == 0 and module_base in base_to_upper:
             new_module = base_to_upper[module_base]
         elif die == 1 and module_base in base_to_bottom:
             new_module = base_to_bottom[module_base]
         else:
-            new_module = module_base + ("_upper" if die == 0 else "_bottom")
+            raise ValueError(f"cell map missing {_tier_name(die)}.macro for base cell '{module_base}'")
 
         # Replace module token at the exact span in original stmt (based on masked match)
         mod_span = m.span(2)  # (start,end) inside stmt
         stmt2 = stmt[:mod_span[0]] + new_module + stmt[mod_span[1]:]
+        port_start = m.end() + (len(new_module) - len(module_tok))
 
-        # Port remap for upper
-        if die == 0 and module_base in base_to_pin_map:
-            pm = base_to_pin_map[module_base]
+        if has_cell_map:
+            pm = _tier_pin_map(die, module_base, base_to_bottom_pin_map, base_to_upper_pin_map)
 
             def _port_repl(mm):
                 dot, pin, lp = mm.groups()
-                return f"{dot}{pm.get(pin, pin)}{lp}"
+                new_pin = _map_pin_name(pm, pin)
+                if new_pin is None:
+                    raise ValueError(
+                        f"cell map missing {_tier_name(die)} pin mapping for base cell "
+                        f"'{module_base}' pin '{pin}' on Verilog instance '{inst_norm}'"
+                )
+                return f"{dot}{new_pin}{lp}"
 
-            stmt2 = VERILOG_PORT_RE.sub(_port_repl, stmt2)
+            stmt2 = stmt2[:port_start] + VERILOG_PORT_RE.sub(_port_repl, stmt2[port_start:])
 
-        # Bind extra pins to 1'b0 for upper
-        if die == 0 and module_base in base_to_upper_extra_pins:
-            stmt2 = _append_extra_ports_instance(stmt2, base_to_upper_extra_pins[module_base])
+            const_pins = _tier_const_pins(
+                die,
+                module_base,
+                base_to_bottom_const_pins,
+                base_to_upper_const_pins,
+            )
+            stmt2 = _append_const_ports_instance(stmt2, const_pins)
 
         out_chunks.append(stmt2)
 
@@ -765,7 +881,7 @@ def main():
     ap.add_argument("--v-in", required=True)
     ap.add_argument("--v-out", required=True)
     ap.add_argument("--partition", default=None, help="partition.txt: <inst> <die(0/1)> (die can be last token)")
-    ap.add_argument("--cell-map", default=None, help="map.json with base/bottom/upper macro and pin_map")
+    ap.add_argument("--cell-map", default=None, help="optional map.json with base/bottom/upper macro and tier pin_map")
     args = ap.parse_args()
 
     # Partition map (must exist if you want deterministic conversion)
@@ -773,10 +889,13 @@ def main():
     (
         base_to_bottom,
         base_to_upper,
-        base_to_pin_map,
-        base_to_upper_extra_pins,
+        base_to_bottom_pin_map,
+        base_to_upper_pin_map,
+        base_to_bottom_const_pins,
+        base_to_upper_const_pins,
         base_to_tier_areas,
         has_heterogeneous_area_map,
+        has_cell_map,
     ) = parse_cell_map_json(args.cell_map)
 
     part = choose_partition_orientation_by_area(
@@ -791,8 +910,28 @@ def main():
     if not part:
         print("[WARN] No partition map provided/parsed. Conversion will only apply JSON macro mapping where possible.")
 
-    rewrite_def(args.def_in, args.def_out, part, base_to_bottom, base_to_upper, base_to_pin_map)
-    rewrite_verilog(args.v_in, args.v_out, part, base_to_bottom, base_to_upper, base_to_pin_map, base_to_upper_extra_pins)
+    rewrite_def(
+        args.def_in,
+        args.def_out,
+        part,
+        base_to_bottom,
+        base_to_upper,
+        base_to_bottom_pin_map,
+        base_to_upper_pin_map,
+        has_cell_map,
+    )
+    rewrite_verilog(
+        args.v_in,
+        args.v_out,
+        part,
+        base_to_bottom,
+        base_to_upper,
+        base_to_bottom_pin_map,
+        base_to_upper_pin_map,
+        base_to_bottom_const_pins,
+        base_to_upper_const_pins,
+        has_cell_map,
+    )
 
 if __name__ == "__main__":
     main()

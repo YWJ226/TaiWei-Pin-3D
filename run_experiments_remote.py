@@ -12,8 +12,6 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 _ACTIVE_PROCS: Dict[int, subprocess.Popen] = {}
 _ACTIVE_PROCS_LOCK = threading.Lock()
-_ACTIVE_REMOTE_JOBS: Dict[str, Tuple[str, Path]] = {}
-_ACTIVE_REMOTE_JOBS_LOCK = threading.Lock()
 
 
 def _register_active_proc(proc: subprocess.Popen) -> None:
@@ -24,16 +22,6 @@ def _register_active_proc(proc: subprocess.Popen) -> None:
 def _unregister_active_proc(proc: subprocess.Popen) -> None:
     with _ACTIVE_PROCS_LOCK:
         _ACTIVE_PROCS.pop(proc.pid, None)
-
-
-def _register_active_remote_job(job_id: str, host: str, pid_path: Path) -> None:
-    with _ACTIVE_REMOTE_JOBS_LOCK:
-        _ACTIVE_REMOTE_JOBS[job_id] = (host, pid_path)
-
-
-def _unregister_active_remote_job(job_id: str) -> None:
-    with _ACTIVE_REMOTE_JOBS_LOCK:
-        _ACTIVE_REMOTE_JOBS.pop(job_id, None)
 
 
 def install_signal_handlers() -> None:
@@ -84,9 +72,6 @@ def terminate_active_procs(sig: int = signal.SIGTERM) -> None:
                     proc.kill()
                 except Exception:
                     pass
-    _terminate_active_remote_jobs()
-
-
 def run_command_with_log(
     cmd: Sequence[str],
     log_path: Path,
@@ -317,94 +302,9 @@ def latest_remote_launch(dispatch_dir: Path,
     return launches[0] if launches else None
 
 
-def stage_label_from_script(script_path: Path) -> str:
-    return "eval" if script_path.name == "eval.sh" else "run"
-
-
 def _write_text_file(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text)
-
-
-def _write_remote_wrapper(
-    repo_root: Path,
-    script_path: Path,
-    log_path: Path,
-    launch: RemoteLaunch,
-) -> None:
-    log_abs = repo_root / log_path
-    exports = "\n".join(_remote_export_lines())
-    unset_line = (
-        "unset DISPLAY WAYLAND_DISPLAY XAUTHORITY DBUS_SESSION_BUS_ADDRESS "
-        "LANG LANGUAGE LC_ALL LC_CTYPE LC_MESSAGES "
-        "SSH_AGENT_PID SSH_AUTH_SOCK SSH_CLIENT SSH_CONNECTION SSH_TTY "
-        "WINDOWID XDG_RUNTIME_DIR XDG_SESSION_ID XDG_SESSION_CLASS "
-        "XDG_SESSION_TYPE XDG_CURRENT_DESKTOP XMODIFIERS "
-        "VSCODE_AGENT_FOLDER VSCODE_CLI_REQUIRE_TOKEN VSCODE_CWD "
-        "VSCODE_ESM_ENTRYPOINT VSCODE_HANDLES_SIGPIPE "
-        "VSCODE_HANDLES_UNCAUGHT_ERRORS VSCODE_IPC_HOOK_CLI "
-        "VSCODE_NLS_CONFIG ELECTRON_RUN_AS_NODE"
-    )
-    wrapper = f"""#!/usr/bin/env bash
-set -uo pipefail
-
-write_state() {{
-  printf '%s\\n' "$1" > {shlex.quote(str(launch.state_path))}
-}}
-
-write_rc() {{
-  printf '%s\\n' "$1" > {shlex.quote(str(launch.rc_path))}
-}}
-
-child_pid=""
-on_term() {{
-  if [[ -n "$child_pid" ]]; then
-    kill "$child_pid" >/dev/null 2>&1 || true
-  fi
-  write_rc 143
-  write_state failed
-  exit 143
-}}
-
-trap on_term HUP INT TERM
-
-printf '%s\\n' "$$" > {shlex.quote(str(launch.pid_path))}
-write_state starting
-
-mkdir -p {shlex.quote(str(log_abs.parent))}
-exec >>{shlex.quote(str(log_abs))} 2>&1
-
-{exports}
-{unset_line}
-
-cd {shlex.quote(str(repo_root))} || {{
-  echo "[launcher] failed to cd into repo root"
-  write_rc 1
-  write_state failed
-  exit 1
-}}
-
-echo "[launcher] submit_mode=remote_detached host=$(hostname) stage={launch.stage} pwd=$PWD"
-echo "[launcher] env DISPLAY=${{DISPLAY:-}} XAUTHORITY=${{XAUTHORITY:-}} XDG_RUNTIME_DIR=${{XDG_RUNTIME_DIR:-}} LC_ALL=${{LC_ALL:-}} LANG=${{LANG:-}}"
-
-write_state running
-
-bash {shlex.quote(str(script_path))} &
-child_pid=$!
-wait "$child_pid"
-rc=$?
-child_pid=""
-
-write_rc "$rc"
-if [[ "$rc" -eq 0 ]]; then
-  write_state ok
-else
-  write_state failed
-fi
-exit "$rc"
-"""
-    _write_text_file(launch.wrapper_path, wrapper)
-    os.chmod(launch.wrapper_path, 0o755)
 
 
 def _write_remote_task_wrapper(
@@ -516,6 +416,184 @@ exit 0
     os.chmod(launch.wrapper_path, 0o755)
 
 
+def _write_local_task_wrapper(
+    repo_root: Path,
+    run_script: Path,
+    eval_script: Path,
+    run_log: Path,
+    eval_log: Path,
+    launch: RemoteLaunch,
+    *,
+    do_run: bool,
+    do_eval: bool,
+) -> None:
+    run_log_abs = repo_root / run_log
+    eval_log_abs = repo_root / eval_log
+    wrapper = f"""#!/usr/bin/env bash
+set -uo pipefail
+
+write_state() {{
+  printf '%s\\n' "$1" > {shlex.quote(str(launch.state_path))}
+}}
+
+write_rc() {{
+  printf '%s\\n' "$1" > {shlex.quote(str(launch.rc_path))}
+}}
+
+write_phase() {{
+  printf '%s\\n' "$1" > {shlex.quote(str(launch.phase_path))}
+}}
+
+child_pid=""
+on_term() {{
+  if [[ -n "$child_pid" ]]; then
+    kill "$child_pid" >/dev/null 2>&1 || true
+  fi
+  write_rc 143
+  write_state failed
+  exit 143
+}}
+
+trap on_term HUP INT TERM
+
+printf '%s\\n' "$$" > {shlex.quote(str(launch.pid_path))}
+write_phase starting
+write_state starting
+
+mkdir -p {shlex.quote(str(run_log_abs.parent))}
+mkdir -p {shlex.quote(str(eval_log_abs.parent))}
+
+cd {shlex.quote(str(repo_root))} || {{
+  write_rc 1
+  write_phase starting
+  write_state failed
+  exit 1
+}}
+
+run_stage() {{
+  local phase="$1"
+  local script_path="$2"
+  local log_path="$3"
+  write_phase "$phase"
+  write_state running
+  bash "$script_path" >"$log_path" 2>&1 &
+  child_pid=$!
+  wait "$child_pid"
+  local rc=$?
+  child_pid=""
+  return "$rc"
+}}
+
+rc=0
+"""
+    if do_run:
+        wrapper += f"""
+run_stage run {shlex.quote(str(run_script))} {shlex.quote(str(run_log_abs))}
+rc=$?
+if [[ "$rc" -ne 0 ]]; then
+  write_rc "$rc"
+  write_phase run
+  write_state failed
+  exit "$rc"
+fi
+"""
+    if do_eval:
+        wrapper += f"""
+run_stage eval {shlex.quote(str(eval_script))} {shlex.quote(str(eval_log_abs))}
+rc=$?
+if [[ "$rc" -ne 0 ]]; then
+  write_rc "$rc"
+  write_phase eval
+  write_state failed
+  exit "$rc"
+fi
+"""
+    wrapper += """
+write_rc 0
+write_phase done
+write_state ok
+exit 0
+"""
+    _write_text_file(launch.wrapper_path, wrapper)
+    os.chmod(launch.wrapper_path, 0o755)
+
+
+def _write_local_command_wrapper(
+    repo_root: Path,
+    command: Sequence[str],
+    log_path: Path,
+    launch: RemoteLaunch,
+    *,
+    phase_name: str,
+) -> None:
+    log_abs = log_path if log_path.is_absolute() else repo_root / log_path
+    command_str = shlex.join([str(arg) for arg in command])
+    wrapper = f"""#!/usr/bin/env bash
+set -uo pipefail
+
+write_state() {{
+  printf '%s\\n' "$1" > {shlex.quote(str(launch.state_path))}
+}}
+
+write_rc() {{
+  printf '%s\\n' "$1" > {shlex.quote(str(launch.rc_path))}
+}}
+
+write_phase() {{
+  printf '%s\\n' "$1" > {shlex.quote(str(launch.phase_path))}
+}}
+
+child_pid=""
+on_term() {{
+  if [[ -n "$child_pid" ]]; then
+    kill "$child_pid" >/dev/null 2>&1 || true
+  fi
+  write_rc 143
+  write_state failed
+  exit 143
+}}
+
+trap on_term HUP INT TERM
+
+printf '%s\\n' "$$" > {shlex.quote(str(launch.pid_path))}
+write_phase starting
+write_state starting
+
+mkdir -p {shlex.quote(str(log_abs.parent))}
+
+cd {shlex.quote(str(repo_root))} || {{
+  write_rc 1
+  write_phase starting
+  write_state failed
+  exit 1
+}}
+
+write_phase {shlex.quote(phase_name)}
+write_state running
+(
+  exec {command_str}
+) >{shlex.quote(str(log_abs))} 2>&1 &
+child_pid=$!
+wait "$child_pid"
+rc=$?
+child_pid=""
+
+if [[ "$rc" -ne 0 ]]; then
+  write_rc "$rc"
+  write_phase {shlex.quote(phase_name)}
+  write_state failed
+  exit "$rc"
+fi
+
+write_rc 0
+write_phase done
+write_state ok
+exit 0
+"""
+    _write_text_file(launch.wrapper_path, wrapper)
+    os.chmod(launch.wrapper_path, 0o755)
+
+
 def _submit_remote_launch(
     host: str,
     dispatch_dir: Path,
@@ -546,6 +624,29 @@ def _read_text(path: Path) -> str:
         return path.read_text().strip()
     except FileNotFoundError:
         return ""
+
+
+def local_pid_is_alive(pid: int) -> Optional[bool]:
+    try:
+        if hasattr(os, "killpg"):
+            os.killpg(pid, 0)
+            return True
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except Exception:
+        try:
+            os.kill(pid, 0)
+            return True
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        except Exception:
+            return None
 
 
 def _ssh_run(host: str,
@@ -608,6 +709,26 @@ def snapshot_remote_launch(host: str,
     )
 
 
+def snapshot_local_launch(launch: RemoteLaunch) -> RemoteLaunchSnapshot:
+    state = _read_text(launch.state_path)
+    phase = _read_text(launch.phase_path)
+    rc_text = _read_text(launch.rc_path)
+    pid_text = _read_text(launch.pid_path)
+
+    rc = int(rc_text) if rc_text.lstrip("-").isdigit() else None
+    pid = int(pid_text) if pid_text.lstrip("-").isdigit() else None
+    pid_alive = local_pid_is_alive(pid) if pid is not None else None
+
+    return RemoteLaunchSnapshot(
+        launch=launch,
+        state=state,
+        phase=phase,
+        rc=rc,
+        pid=pid,
+        pid_alive=pid_alive,
+    )
+
+
 def kill_remote_launch(host: str,
                        launch: RemoteLaunch,
                        *,
@@ -634,58 +755,104 @@ def kill_remote_launch(host: str,
     return True
 
 
-def _wait_remote_launch(host: str, launch: RemoteLaunch) -> None:
-    _register_active_remote_job(launch.job_id, host, launch.pid_path)
-    start = time.time()
+def kill_local_launch(launch: RemoteLaunch, *, rc: int = 143) -> bool:
+    pid_text = _read_text(launch.pid_path)
+    if not pid_text.lstrip("-").isdigit():
+        return False
+
+    pid = int(pid_text)
     try:
-        while True:
-            state = _read_text(launch.state_path)
-            if state == "ok":
-                return
-            if state == "failed":
-                rc_text = _read_text(launch.rc_path)
-                rc = int(rc_text) if rc_text.lstrip("-").isdigit() else 1
-                raise subprocess.CalledProcessError(
-                    rc,
-                    [f"remote:{host}", launch.stage, launch.job_id],
-                )
-            if not state and (time.time() - start) > 30:
-                raise subprocess.CalledProcessError(
-                    1,
-                    [f"remote:{host}", launch.stage, launch.job_id],
-                )
-            time.sleep(2)
-    finally:
-        _unregister_active_remote_job(launch.job_id)
+        if hasattr(os, "killpg"):
+            os.killpg(pid, signal.SIGTERM)
+        else:
+            os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return False
+    except Exception:
+        return False
 
-
-def _terminate_active_remote_jobs() -> None:
-    with _ACTIVE_REMOTE_JOBS_LOCK:
-        jobs = list(_ACTIVE_REMOTE_JOBS.items())
-    for _, (host, pid_path) in jobs:
+    time.sleep(1)
+    alive = local_pid_is_alive(pid)
+    if alive:
         try:
-            if not pid_path.exists():
-                continue
-            kill_remote_launch(
-                host,
-                _launch_from_job_id(pid_path.parent, pid_path.stem),
-                rc=143,
-            )
+            if hasattr(os, "killpg"):
+                os.killpg(pid, signal.SIGKILL)
+            else:
+                os.kill(pid, signal.SIGKILL)
         except Exception:
             pass
 
+    launch.rc_path.write_text(f"{rc}\n")
+    launch.state_path.write_text("failed\n")
+    return True
 
-def run_remote_task(
+
+def _submit_local_launch(
     repo_root: Path,
-    host: str,
-    dispatch_dir: Path,
-    script_path: Path,
-    log_path: Path,
+    launch: RemoteLaunch,
+    *,
+    env: Optional[dict] = None,
 ) -> None:
-    launch = _new_remote_launch(dispatch_dir, stage_label_from_script(script_path))
-    _write_remote_wrapper(repo_root, script_path, log_path, launch)
-    _submit_remote_launch(host, dispatch_dir, launch, repo_root / log_path)
-    _wait_remote_launch(host, launch)
+    preexec = getattr(os, "setsid", None)
+    proc = subprocess.Popen(
+        ["bash", str(launch.wrapper_path)],
+        cwd=str(repo_root),
+        env=env,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        preexec_fn=preexec,
+    )
+    _register_active_proc(proc)
+
+
+def submit_local_task(
+    repo_root: Path,
+    dispatch_dir: Path,
+    run_script: Path,
+    eval_script: Path,
+    run_log: Path,
+    eval_log: Path,
+    *,
+    do_run: bool,
+    do_eval: bool,
+    env: Optional[dict] = None,
+) -> RemoteLaunch:
+    launch = _new_remote_launch(dispatch_dir, "task")
+    _write_local_task_wrapper(
+        repo_root=repo_root,
+        run_script=run_script,
+        eval_script=eval_script,
+        run_log=run_log,
+        eval_log=eval_log,
+        launch=launch,
+        do_run=do_run,
+        do_eval=do_eval,
+    )
+    _submit_local_launch(repo_root, launch, env=env)
+    return launch
+
+
+def submit_local_command(
+    repo_root: Path,
+    dispatch_dir: Path,
+    command: Sequence[str],
+    log_path: Path,
+    *,
+    stage: str = "task",
+    phase_name: str = "run",
+    env: Optional[dict] = None,
+) -> RemoteLaunch:
+    launch = _new_remote_launch(dispatch_dir, stage)
+    _write_local_command_wrapper(
+        repo_root=repo_root,
+        command=command,
+        log_path=log_path,
+        launch=launch,
+        phase_name=phase_name,
+    )
+    _submit_local_launch(repo_root, launch, env=env)
+    return launch
 
 
 def submit_remote_task(

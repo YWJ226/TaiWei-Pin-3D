@@ -192,10 +192,50 @@ proc ::pin3d::empty_cell_map {} {
   return [dict create \
     base_to_bottom [dict create] \
     base_to_upper [dict create] \
-    base_to_pin_map [dict create] \
-    base_to_upper_extra_pins [dict create] \
+    base_to_bottom_pin_map [dict create] \
+    base_to_upper_pin_map [dict create] \
+    base_to_bottom_const_pins [dict create] \
+    base_to_upper_const_pins [dict create] \
     base_to_tier_areas [dict create] \
-    has_heterogeneous_area_map 0]
+    has_heterogeneous_area_map 0 \
+    has_cell_map 0]
+}
+
+proc ::pin3d::require_dict {value context} {
+  if {[catch {dict size $value}]} {
+    utl::error PIN3D 117 "cell map format error: '$context' must be an object."
+  }
+  return $value
+}
+
+proc ::pin3d::require_string {value context} {
+  if {$value eq "" || $value eq "null"} {
+    utl::error PIN3D 118 "cell map format error: '$context' must be a non-empty string."
+  }
+  return $value
+}
+
+proc ::pin3d::require_pin_map {value context} {
+  set mapping [::pin3d::require_dict $value $context]
+  dict for {src dst} $mapping {
+    if {$src eq "" || $src eq "null" || $dst eq "" || $dst eq "null"} {
+      utl::error PIN3D 119 "cell map format error: '$context' entries must be non-empty strings."
+    }
+  }
+  return $mapping
+}
+
+proc ::pin3d::parse_const_pins {tier_data context} {
+  if {![dict exists $tier_data const_pins]} {
+    return [dict create]
+  }
+  set const_pins [::pin3d::require_dict [dict get $tier_data const_pins] $context]
+  dict for {pin value} $const_pins {
+    if {$pin eq "" || $pin eq "null" || $value eq "" || $value eq "null"} {
+      utl::error PIN3D 120 "cell map format error: '$context' entries must be non-empty strings."
+    }
+  }
+  return $const_pins
 }
 
 proc ::pin3d::parse_cell_map {path} {
@@ -208,60 +248,47 @@ proc ::pin3d::parse_cell_map {path} {
     return [::pin3d::empty_cell_map]
   }
   if {[catch {set data [::json_lite::parse_file $path]} err]} {
-    ::pin3d::warn "cell map JSON '$path' parse failed, skip explicit mapping and use suffix fallback. error=$err"
-    return [::pin3d::empty_cell_map]
+    utl::error PIN3D 107 "cell map JSON '$path' parse failed: $err"
   }
   if {![::json_lite::dict_exists_path $data cells]} {
-    ::pin3d::warn "cell map JSON '$path' missing 'cells', skip explicit mapping and use suffix fallback."
-    return [::pin3d::empty_cell_map]
+    utl::error PIN3D 108 "cell map JSON '$path' missing required 'cells' object."
   }
 
   set base_to_bottom [dict create]
   set base_to_upper [dict create]
-  set base_to_pin_map [dict create]
-  set base_to_upper_extra_pins [dict create]
+  set base_to_bottom_pin_map [dict create]
+  set base_to_upper_pin_map [dict create]
+  set base_to_bottom_const_pins [dict create]
+  set base_to_upper_const_pins [dict create]
   set base_to_tier_areas [dict create]
   set has_heterogeneous_area_map 0
 
-  set cells [dict get $data cells]
+  set cells [::pin3d::require_dict [dict get $data cells] cells]
   dict for {cell_key cell_data} $cells {
-    set base [::json_lite::dict_get_default $cell_data base $cell_key]
-    set bottom [::json_lite::dict_get_default $cell_data bottom [dict create]]
-    set upper [::json_lite::dict_get_default $cell_data upper [dict create]]
-    set pin_map [::json_lite::dict_get_default $cell_data pin_map [dict create]]
+    set cell_data [::pin3d::require_dict $cell_data "cells.$cell_key"]
+    set base_data [::pin3d::require_dict [::json_lite::dict_get_default $cell_data base ""] "cells.$cell_key.base"]
+    set bottom [::pin3d::require_dict [::json_lite::dict_get_default $cell_data bottom ""] "cells.$cell_key.bottom"]
+    set upper [::pin3d::require_dict [::json_lite::dict_get_default $cell_data upper ""] "cells.$cell_key.upper"]
 
+    set base [::pin3d::require_string [::json_lite::dict_get_default $base_data macro ""] "cells.$cell_key.base.macro"]
     set bottom_macro [::json_lite::dict_get_default $bottom macro ""]
     set upper_macro [::json_lite::dict_get_default $upper macro ""]
-    if {$bottom_macro ne ""} {
-      dict set base_to_bottom $base $bottom_macro
-    }
-    if {$upper_macro ne ""} {
-      dict set base_to_upper $base $upper_macro
-    }
-    if {[dict size $pin_map] > 0} {
-      dict set base_to_pin_map $base $pin_map
-    }
+    set bottom_macro [::pin3d::require_string $bottom_macro "cells.$cell_key.bottom.macro"]
+    set upper_macro [::pin3d::require_string $upper_macro "cells.$cell_key.upper.macro"]
+    dict set base_to_bottom $base $bottom_macro
+    dict set base_to_upper $base $upper_macro
+    dict set base_to_bottom_pin_map $base [::pin3d::require_pin_map \
+      [::json_lite::dict_get_default $bottom pin_map ""] "cells.$cell_key.bottom.pin_map"]
+    dict set base_to_upper_pin_map $base [::pin3d::require_pin_map \
+      [::json_lite::dict_get_default $upper pin_map ""] "cells.$cell_key.upper.pin_map"]
 
-    set upper_pins [::json_lite::dict_get_default $upper pins {}]
-    if {[llength $upper_pins] > 0} {
-      set mapped_upper {}
-      dict for {old_pin new_pin} $pin_map {
-        lappend mapped_upper $new_pin
-      }
-      set mapped_upper [lsort -unique $mapped_upper]
-      set extras {}
-      foreach pin $upper_pins {
-        if {[lsearch -exact $mapped_upper $pin] >= 0} {
-          continue
-        }
-        if {[::pin3d::is_power_pin_name $pin]} {
-          continue
-        }
-        lappend extras $pin
-      }
-      if {[llength $extras] > 0} {
-        dict set base_to_upper_extra_pins $base $extras
-      }
+    set bottom_const_pins [::pin3d::parse_const_pins $bottom "cells.$cell_key.bottom.const_pins"]
+    if {[dict size $bottom_const_pins] > 0} {
+      dict set base_to_bottom_const_pins $base $bottom_const_pins
+    }
+    set upper_const_pins [::pin3d::parse_const_pins $upper "cells.$cell_key.upper.const_pins"]
+    if {[dict size $upper_const_pins] > 0} {
+      dict set base_to_upper_const_pins $base $upper_const_pins
     }
 
     set bw [::json_lite::try_double [::json_lite::dict_get_default $bottom width ""] ""]
@@ -281,10 +308,13 @@ proc ::pin3d::parse_cell_map {path} {
   return [dict create \
     base_to_bottom $base_to_bottom \
     base_to_upper $base_to_upper \
-    base_to_pin_map $base_to_pin_map \
-    base_to_upper_extra_pins $base_to_upper_extra_pins \
+    base_to_bottom_pin_map $base_to_bottom_pin_map \
+    base_to_upper_pin_map $base_to_upper_pin_map \
+    base_to_bottom_const_pins $base_to_bottom_const_pins \
+    base_to_upper_const_pins $base_to_upper_const_pins \
     base_to_tier_areas $base_to_tier_areas \
-    has_heterogeneous_area_map $has_heterogeneous_area_map]
+    has_heterogeneous_area_map $has_heterogeneous_area_map \
+    has_cell_map 1]
 }
 
 # ----------------------------------------------------------------------
@@ -449,35 +479,74 @@ proc ::pin3d::choose_partition_orientation {part_map cell_map norm_to_base top_p
 
 proc ::pin3d::target_master_name {base die cell_map stats_var} {
   upvar 1 $stats_var stats
+  if {![dict get $cell_map has_cell_map]} {
+    dict incr stats fallback_count
+    if {$die eq "0"} {
+      return "${base}_upper"
+    }
+    return "${base}_bottom"
+  }
   if {$die eq "0"} {
     set explicit [::json_lite::dict_get_default [dict get $cell_map base_to_upper] $base ""]
     if {$explicit ne ""} {
       return $explicit
     }
-    dict incr stats fallback_count
-    return "${base}_upper"
+    utl::error PIN3D 121 "cell map missing upper.macro for base cell '$base'."
   }
   set explicit [::json_lite::dict_get_default [dict get $cell_map base_to_bottom] $base ""]
   if {$explicit ne ""} {
     return $explicit
   }
-  dict incr stats fallback_count
-  return "${base}_bottom"
+  utl::error PIN3D 122 "cell map missing bottom.macro for base cell '$base'."
 }
 
-proc ::pin3d::record_instance_extra_pins {extra_bindings_var inst_name extra_pins connected_targets} {
-  upvar 1 $extra_bindings_var extra_bindings
-  if {[llength $extra_pins] == 0} {
+proc ::pin3d::target_pin_name {base die old_pin cell_map inst_name} {
+  if {![dict get $cell_map has_cell_map]} {
+    return $old_pin
+  }
+  if {$die eq "0"} {
+    set pin_maps [dict get $cell_map base_to_upper_pin_map]
+    set tier upper
+  } else {
+    set pin_maps [dict get $cell_map base_to_bottom_pin_map]
+    set tier bottom
+  }
+  if {![dict exists $pin_maps $base]} {
+    utl::error PIN3D 123 "cell map missing $tier.pin_map for base cell '$base'."
+  }
+  set pin_map [dict get $pin_maps $base]
+  if {[dict exists $pin_map $old_pin]} {
+    return [dict get $pin_map $old_pin]
+  }
+  if {[regexp {^(.+)(\[[^\]]+\])$} $old_pin -> bus_base bus_index] && [dict exists $pin_map $bus_base]} {
+    return "[dict get $pin_map $bus_base]$bus_index"
+  }
+  utl::error PIN3D 124 "cell map missing $tier pin mapping for base cell '$base' pin '$old_pin' on instance '$inst_name'."
+}
+
+proc ::pin3d::tier_const_pins {base die cell_map} {
+  if {![dict get $cell_map has_cell_map]} {
+    return [dict create]
+  }
+  if {$die eq "0"} {
+    return [::json_lite::dict_get_default [dict get $cell_map base_to_upper_const_pins] $base [dict create]]
+  }
+  return [::json_lite::dict_get_default [dict get $cell_map base_to_bottom_const_pins] $base [dict create]]
+}
+
+proc ::pin3d::record_instance_const_pins {const_bindings_var inst_name const_pins connected_targets} {
+  upvar 1 $const_bindings_var const_bindings
+  if {[dict size $const_pins] == 0} {
     return
   }
-  set missing {}
-  foreach pin $extra_pins {
+  set missing [dict create]
+  dict for {pin value} $const_pins {
     if {![dict exists $connected_targets $pin]} {
-      lappend missing $pin
+      dict set missing $pin $value
     }
   }
-  if {[llength $missing] > 0} {
-    dict set extra_bindings [::pin3d::normalize_name $inst_name] $missing
+  if {[dict size $missing] > 0} {
+    dict set const_bindings [::pin3d::normalize_name $inst_name] $missing
   }
 }
 
@@ -500,9 +569,7 @@ proc ::pin3d::lookup_target_master {db target_master_name cache_var} {
 
 proc ::pin3d::replace_partitioned_instances {block db insts part_map cell_map norm_to_inst} {
   set stats [dict create upper_count 0 bottom_count 0 fallback_count 0 ignored_partition_names 0 total_partition_names [dict size $part_map]]
-  set extra_bindings [dict create]
-  set base_to_pin_map [dict get $cell_map base_to_pin_map]
-  set base_to_upper_extra_pins [dict get $cell_map base_to_upper_extra_pins]
+  set const_bindings [dict create]
   set target_master_cache [dict create]
 
   set ignored 0
@@ -575,15 +642,10 @@ proc ::pin3d::replace_partitioned_instances {block db insts part_map cell_map no
     }
 
     set connected_targets [dict create]
-    set pin_map [::json_lite::dict_get_default $base_to_pin_map $base [dict create]]
-    set extra_pins [::json_lite::dict_get_default $base_to_upper_extra_pins $base {}]
+    set const_pins [::pin3d::tier_const_pins $base $die $cell_map]
     set new_iterms [::pin3d::index_instance_iterms $new_inst]
     dict for {old_pin net} $pin_to_net {
-      if {$die eq "0"} {
-        set new_pin [::json_lite::dict_get_default $pin_map $old_pin $old_pin]
-      } else {
-        set new_pin $old_pin
-      }
+      set new_pin [::pin3d::target_pin_name $base $die $old_pin $cell_map $inst_name]
       if {[dict exists $connected_targets $new_pin]} {
         utl::error PIN3D 111 "Duplicate target pin '$new_pin' while reconnecting '$inst_name'."
       }
@@ -594,9 +656,9 @@ proc ::pin3d::replace_partitioned_instances {block db insts part_map cell_map no
       $new_iterm connect $net
       dict set connected_targets $new_pin 1
     }
+    ::pin3d::record_instance_const_pins const_bindings $inst_name $const_pins $connected_targets
 
     if {$die eq "0"} {
-      ::pin3d::record_instance_extra_pins extra_bindings $inst_name $extra_pins $connected_targets
       dict incr stats upper_count
     } else {
       dict incr stats bottom_count
@@ -607,8 +669,8 @@ proc ::pin3d::replace_partitioned_instances {block db insts part_map cell_map no
     dict incr stats replaced_instances
   }
 
-  dict set stats extra_pin_injection_count [dict size $extra_bindings]
-  return [dict create stats $stats extra_bindings $extra_bindings]
+  dict set stats extra_pin_injection_count [dict size $const_bindings]
+  return [dict create stats $stats const_bindings $const_bindings]
 }
 
 # ----------------------------------------------------------------------
@@ -652,8 +714,8 @@ proc ::pin3d::split_verilog_statements {text} {
   return $spans
 }
 
-proc ::pin3d::append_extra_ports_instance {stmt extra_pins} {
-  if {[llength $extra_pins] == 0} {
+proc ::pin3d::append_const_ports_instance {stmt const_pins} {
+  if {[dict size $const_pins] == 0} {
     return $stmt
   }
 
@@ -664,13 +726,13 @@ proc ::pin3d::append_extra_ports_instance {stmt extra_pins} {
     set search_idx [expr {[lindex $match_idx 1] + 1}]
   }
 
-  set missing {}
-  foreach pin $extra_pins {
+  set missing [dict create]
+  dict for {pin value} $const_pins {
     if {[lsearch -exact $existing $pin] < 0} {
-      lappend missing $pin
+      dict set missing $pin $value
     }
   }
-  if {[llength $missing] == 0} {
+  if {[dict size $missing] == 0} {
     return $stmt
   }
 
@@ -690,14 +752,14 @@ proc ::pin3d::append_extra_ports_instance {stmt extra_pins} {
   }
 
   set insert_text ""
-  foreach pin $missing {
-    append insert_text ",\n${indent}.${pin}(1'b0)"
+  dict for {pin value} $missing {
+    append insert_text ",\n${indent}.${pin}(${value})"
   }
   return "[string range $stmt 0 [expr {$pos - 1}]]$insert_text[string range $stmt $pos end]"
 }
 
-proc ::pin3d::patch_verilog_extra_pins {path extra_bindings} {
-  if {[dict size $extra_bindings] == 0} {
+proc ::pin3d::patch_verilog_const_pins {path const_bindings} {
+  if {[dict size $const_bindings] == 0} {
     return 0
   }
   set fh [open $path r]
@@ -724,8 +786,8 @@ proc ::pin3d::patch_verilog_extra_pins {path extra_bindings} {
         \s*\(
       } $stmt -> inst_tok]} {
       set inst_norm [::pin3d::normalize_name $inst_tok]
-      if {[dict exists $extra_bindings $inst_norm]} {
-        set stmt2 [::pin3d::append_extra_ports_instance $stmt [dict get $extra_bindings $inst_norm]]
+      if {[dict exists $const_bindings $inst_norm]} {
+        set stmt2 [::pin3d::append_const_ports_instance $stmt [dict get $const_bindings $inst_norm]]
         if {$stmt2 ne $stmt} {
           incr patched
         }
@@ -799,14 +861,14 @@ proc ::pin3d::load_seed_design {run_inputs} {
   load_design $v_in $sdc_in "Generate 3D views"
 }
 
-proc ::pin3d::write_outputs {run_inputs extra_bindings stats_var} {
+proc ::pin3d::write_outputs {run_inputs const_bindings stats_var} {
   upvar 1 $stats_var stats
 
   set def_out [dict get $run_inputs def_out]
   set v_out [dict get $run_inputs v_out]
   write_def $def_out
   write_verilog $v_out
-  dict set stats extra_pin_injection_count [::pin3d::patch_verilog_extra_pins $v_out $extra_bindings]
+  dict set stats extra_pin_injection_count [::pin3d::patch_verilog_const_pins $v_out $const_bindings]
 }
 
 # ----------------------------------------------------------------------
@@ -835,8 +897,8 @@ proc ::pin3d::run {} {
   set adjusted_part_map [::pin3d::choose_partition_orientation $part_map $cell_map $norm_to_base $top_pins]
   set replace_result [::pin3d::replace_partitioned_instances $block $db $insts $adjusted_part_map $cell_map $norm_to_inst]
   set stats [dict get $replace_result stats]
-  set extra_bindings [dict get $replace_result extra_bindings]
-  ::pin3d::write_outputs $run_inputs $extra_bindings stats
+  set const_bindings [dict get $replace_result const_bindings]
+  ::pin3d::write_outputs $run_inputs $const_bindings stats
 
   ::pin3d::log [format "Summary: total_instances=%d replaced=%d upper=%d bottom=%d fallback=%d extra_pin_injections=%d ignored_partition_names=%d" \
     [dict get $stats total_instances] \

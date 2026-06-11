@@ -3,7 +3,16 @@
   "upper_file": "asap7sc7p5t_28_R_1x_220121a.upper.processed.lef",
   "cells": {
     "AND2_X1": {
-      "base": "AND2_X1",
+      "base": {
+        "macro": "AND2_X1",
+        "pins": [
+          "A1",
+          "A2",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "AND2_X1_bottom",
         "width": 0.76,
@@ -14,7 +23,14 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "AND2x2_ASAP7_75t_R_upper",
@@ -26,18 +42,27 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A1": "A",
-        "A2": "B",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A1": "A",
+          "A2": "B",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "AND2_X2": {
-      "base": "AND2_X2",
+      "base": {
+        "macro": "AND2_X2",
+        "pins": [
+          "A1",
+          "A2",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "AND2_X2_bottom",
         "width": 0.95,
@@ -48,7 +73,14 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "AND2x4_ASAP7_75t_R_upper",
@@ -60,18 +92,27 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A1": "A",
-        "A2": "B",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A1": "A",
+          "A2": "B",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "AND2_X4": {
-      "base": "AND2_X4",
+      "base": {
+        "macro": "AND2_X4",
+        "pins": [
+          "A1",
+          "A2",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "AND2_X4_bottom",
         "width": 1.71,
@@ -82,7 +123,14 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "AND2x6_ASAP7_75t_R_upper",
@@ -94,18 +142,28 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A1": "A",
-        "A2": "B",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A1": "A",
+          "A2": "B",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "AND3_X1": {
-      "base": "AND3_X1",
+      "base": {
+        "macro": "AND3_X1",
+        "pins": [
+          "A1",
+          "A2",
+          "A3",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "AND3_X1_bottom",
         "width": 0.95,
@@ -117,7 +175,15 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "A3": "A3",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "AND3x1_ASAP7_75t_R_upper",
@@ -130,19 +196,29 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A1": "A",
-        "A2": "B",
-        "A3": "C",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A1": "A",
+          "A2": "B",
+          "A3": "C",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "AND3_X2": {
-      "base": "AND3_X2",
+      "base": {
+        "macro": "AND3_X2",
+        "pins": [
+          "A1",
+          "A2",
+          "A3",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "AND3_X2_bottom",
         "width": 1.14,
@@ -154,7 +230,15 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "A3": "A3",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "AND3x2_ASAP7_75t_R_upper",
@@ -167,19 +251,29 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A1": "A",
-        "A2": "B",
-        "A3": "C",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A1": "A",
+          "A2": "B",
+          "A3": "C",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "AND3_X4": {
-      "base": "AND3_X4",
+      "base": {
+        "macro": "AND3_X4",
+        "pins": [
+          "A1",
+          "A2",
+          "A3",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "AND3_X4_bottom",
         "width": 2.09,
@@ -191,7 +285,15 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "A3": "A3",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "AND3x4_ASAP7_75t_R_upper",
@@ -204,19 +306,30 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A1": "A",
-        "A2": "B",
-        "A3": "C",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A1": "A",
+          "A2": "B",
+          "A3": "C",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "AND4_X1": {
-      "base": "AND4_X1",
+      "base": {
+        "macro": "AND4_X1",
+        "pins": [
+          "A1",
+          "A2",
+          "A3",
+          "A4",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "AND4_X1_bottom",
         "width": 1.14,
@@ -229,7 +342,16 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "A3": "A3",
+          "A4": "A4",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "AND4x1_ASAP7_75t_R_upper",
@@ -243,20 +365,31 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A1": "A",
-        "A2": "B",
-        "A3": "C",
-        "A4": "D",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A1": "A",
+          "A2": "B",
+          "A3": "C",
+          "A4": "D",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "AND4_X2": {
-      "base": "AND4_X2",
+      "base": {
+        "macro": "AND4_X2",
+        "pins": [
+          "A1",
+          "A2",
+          "A3",
+          "A4",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "AND4_X2_bottom",
         "width": 1.33,
@@ -269,7 +402,16 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "A3": "A3",
+          "A4": "A4",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "AND4x2_ASAP7_75t_R_upper",
@@ -283,20 +425,30 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A1": "A",
-        "A2": "B",
-        "A3": "C",
-        "A4": "D",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A1": "A",
+          "A2": "B",
+          "A3": "C",
+          "A4": "D",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "AOI21_X1": {
-      "base": "AOI21_X1",
+      "base": {
+        "macro": "AOI21_X1",
+        "pins": [
+          "A",
+          "B1",
+          "B2",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "AOI21_X1_bottom",
         "width": 0.76,
@@ -308,7 +460,15 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A": "A",
+          "B1": "B1",
+          "B2": "B2",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "AOI21xp33_ASAP7_75t_R_upper",
@@ -321,19 +481,29 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "B1": "A1",
-        "B2": "A2",
-        "A": "B",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "B1": "A1",
+          "B2": "A2",
+          "A": "B",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "AOI21_X2": {
-      "base": "AOI21_X2",
+      "base": {
+        "macro": "AOI21_X2",
+        "pins": [
+          "A",
+          "B1",
+          "B2",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "AOI21_X2_bottom",
         "width": 1.33,
@@ -345,7 +515,15 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A": "A",
+          "B1": "B1",
+          "B2": "B2",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "AOI21xp5_ASAP7_75t_R_upper",
@@ -358,19 +536,30 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "B1": "A1",
-        "B2": "A2",
-        "A": "B",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "B1": "A1",
+          "B2": "A2",
+          "A": "B",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "AOI22_X1": {
-      "base": "AOI22_X1",
+      "base": {
+        "macro": "AOI22_X1",
+        "pins": [
+          "A1",
+          "A2",
+          "B1",
+          "B2",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "AOI22_X1_bottom",
         "width": 0.95,
@@ -383,7 +572,16 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "B1": "B1",
+          "B2": "B2",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "AOI22xp33_ASAP7_75t_R_upper",
@@ -397,20 +595,31 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A1": "A1",
-        "A2": "A2",
-        "B1": "B1",
-        "B2": "B2",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "B1": "B1",
+          "B2": "B2",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "AOI22_X2": {
-      "base": "AOI22_X2",
+      "base": {
+        "macro": "AOI22_X2",
+        "pins": [
+          "A1",
+          "A2",
+          "B1",
+          "B2",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "AOI22_X2_bottom",
         "width": 1.71,
@@ -423,7 +632,16 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "B1": "B1",
+          "B2": "B2",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "AOI22xp5_ASAP7_75t_R_upper",
@@ -437,20 +655,28 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A1": "A1",
-        "A2": "A2",
-        "B1": "B1",
-        "B2": "B2",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "B1": "B1",
+          "B2": "B2",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "BUF_X1": {
-      "base": "BUF_X1",
+      "base": {
+        "macro": "BUF_X1",
+        "pins": [
+          "A",
+          "Z",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "BUF_X1_bottom",
         "width": 0.57,
@@ -460,7 +686,13 @@
           "Z",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A": "A",
+          "Z": "Z",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "BUFx2_ASAP7_75t_R_upper",
@@ -471,17 +703,25 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A": "A",
-        "Z": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A": "A",
+          "Z": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "BUF_X2": {
-      "base": "BUF_X2",
+      "base": {
+        "macro": "BUF_X2",
+        "pins": [
+          "A",
+          "Z",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "BUF_X2_bottom",
         "width": 0.76,
@@ -491,7 +731,13 @@
           "Z",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A": "A",
+          "Z": "Z",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "BUFx3_ASAP7_75t_R_upper",
@@ -502,17 +748,25 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A": "A",
-        "Z": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A": "A",
+          "Z": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "BUF_X4": {
-      "base": "BUF_X4",
+      "base": {
+        "macro": "BUF_X4",
+        "pins": [
+          "A",
+          "Z",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "BUF_X4_bottom",
         "width": 1.33,
@@ -522,7 +776,13 @@
           "Z",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A": "A",
+          "Z": "Z",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "BUFx4_ASAP7_75t_R_upper",
@@ -533,17 +793,25 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A": "A",
-        "Z": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A": "A",
+          "Z": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "BUF_X8": {
-      "base": "BUF_X8",
+      "base": {
+        "macro": "BUF_X8",
+        "pins": [
+          "A",
+          "Z",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "BUF_X8_bottom",
         "width": 2.47,
@@ -553,7 +821,13 @@
           "Z",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A": "A",
+          "Z": "Z",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "BUFx4f_ASAP7_75t_R_upper",
@@ -564,17 +838,26 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A": "A",
-        "Z": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A": "A",
+          "Z": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "CLKGATE_X1": {
-      "base": "CLKGATE_X1",
+      "base": {
+        "macro": "CLKGATE_X1",
+        "pins": [
+          "CK",
+          "E",
+          "GCK",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "CLKGATE_X1_bottom",
         "width": 2.47,
@@ -585,7 +868,14 @@
           "GCK",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "CK": "CK",
+          "E": "E",
+          "GCK": "GCK",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "ICGx1_ASAP7_75t_R_upper",
@@ -598,18 +888,27 @@
           "VDD",
           "VSS",
           "CLK"
-        ]
-      },
-      "pin_map": {
-        "CK": "CLK",
-        "E": "ENA",
-        "GCK": "GCLK",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "CK": "CLK",
+          "E": "ENA",
+          "GCK": "GCLK",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "DFF_X1": {
-      "base": "DFF_X1",
+      "base": {
+        "macro": "DFF_X1",
+        "pins": [
+          "D",
+          "CK",
+          "Q",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "DFF_X1_bottom",
         "width": 3.23,
@@ -618,10 +917,16 @@
           "D",
           "CK",
           "Q",
-          "QN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "D": "D",
+          "CK": "CK",
+          "Q": "Q",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "DFFHQx4_ASAP7_75t_R_upper",
@@ -633,18 +938,29 @@
           "Q",
           "VDD",
           "VSS"
-        ]
-      },
-      "pin_map": {
-        "D": "D",
-        "CK": "CLK",
-        "Q": "Q",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "D": "D",
+          "CK": "CLK",
+          "Q": "Q",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "DFFRS_X1": {
-      "base": "DFFRS_X1",
+      "base": {
+        "macro": "DFFRS_X1",
+        "pins": [
+          "D",
+          "CK",
+          "SN",
+          "RN",
+          "QN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "DFFRS_X1_bottom",
         "width": 4.56,
@@ -657,7 +973,16 @@
           "QN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "D": "D",
+          "CK": "CK",
+          "SN": "SN",
+          "RN": "RN",
+          "QN": "QN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "DFFASRHQNx1_ASAP7_75t_R_upper",
@@ -671,20 +996,29 @@
           "QN",
           "VDD",
           "VSS"
-        ]
-      },
-      "pin_map": {
-        "D": "D",
-        "CK": "CLK",
-        "QN": "QN",
-        "SN": "SETN",
-        "RN": "RESETN",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "D": "D",
+          "CK": "CLK",
+          "QN": "QN",
+          "SN": "SETN",
+          "RN": "RESETN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "DLH_X1": {
-      "base": "DLH_X1",
+      "base": {
+        "macro": "DLH_X1",
+        "pins": [
+          "D",
+          "G",
+          "Q",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "DLH_X1_bottom",
         "width": 1.9,
@@ -695,7 +1029,14 @@
           "Q",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "D": "D",
+          "G": "G",
+          "Q": "Q",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "DHLx1_ASAP7_75t_R_upper",
@@ -707,18 +1048,27 @@
           "Q",
           "VDD",
           "VSS"
-        ]
-      },
-      "pin_map": {
-        "D": "D",
-        "G": "CLK",
-        "Q": "Q",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "D": "D",
+          "G": "CLK",
+          "Q": "Q",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "DLH_X2": {
-      "base": "DLH_X2",
+      "base": {
+        "macro": "DLH_X2",
+        "pins": [
+          "D",
+          "G",
+          "Q",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "DLH_X2_bottom",
         "width": 2.09,
@@ -729,7 +1079,14 @@
           "Q",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "D": "D",
+          "G": "G",
+          "Q": "Q",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "DHLx2_ASAP7_75t_R_upper",
@@ -741,18 +1098,27 @@
           "Q",
           "VDD",
           "VSS"
-        ]
-      },
-      "pin_map": {
-        "D": "D",
-        "G": "CLK",
-        "Q": "Q",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "D": "D",
+          "G": "CLK",
+          "Q": "Q",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "DLL_X1": {
-      "base": "DLL_X1",
+      "base": {
+        "macro": "DLL_X1",
+        "pins": [
+          "D",
+          "GN",
+          "Q",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "DLL_X1_bottom",
         "width": 1.9,
@@ -763,7 +1129,14 @@
           "Q",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "D": "D",
+          "GN": "GN",
+          "Q": "Q",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "DLLx1_ASAP7_75t_R_upper",
@@ -775,18 +1148,27 @@
           "Q",
           "VDD",
           "VSS"
-        ]
-      },
-      "pin_map": {
-        "D": "D",
-        "GN": "CLK",
-        "Q": "Q",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "D": "D",
+          "GN": "CLK",
+          "Q": "Q",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "DLL_X2": {
-      "base": "DLL_X2",
+      "base": {
+        "macro": "DLL_X2",
+        "pins": [
+          "D",
+          "GN",
+          "Q",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "DLL_X2_bottom",
         "width": 2.09,
@@ -797,7 +1179,14 @@
           "Q",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "D": "D",
+          "GN": "GN",
+          "Q": "Q",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "DLLx2_ASAP7_75t_R_upper",
@@ -809,18 +1198,29 @@
           "Q",
           "VDD",
           "VSS"
-        ]
-      },
-      "pin_map": {
-        "D": "D",
-        "GN": "CLK",
-        "Q": "Q",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "D": "D",
+          "GN": "CLK",
+          "Q": "Q",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "FA_X1": {
-      "base": "FA_X1",
+      "base": {
+        "macro": "FA_X1",
+        "pins": [
+          "A",
+          "B",
+          "CI",
+          "CO",
+          "S",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "FA_X1_bottom",
         "width": 3.04,
@@ -833,7 +1233,16 @@
           "S",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A": "A",
+          "B": "B",
+          "CI": "CI",
+          "CO": "CO",
+          "S": "S",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "FAx1_ASAP7_75t_R_upper",
@@ -847,20 +1256,30 @@
           "B",
           "CI",
           "CON"
-        ]
-      },
-      "pin_map": {
-        "A": "A",
-        "B": "B",
-        "CI": "CI",
-        "S": "SN",
-        "CO": "CON",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A": "A",
+          "B": "B",
+          "CI": "CI",
+          "S": "SN",
+          "CO": "CON",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "HA_X1": {
-      "base": "HA_X1",
+      "base": {
+        "macro": "HA_X1",
+        "pins": [
+          "A",
+          "B",
+          "CO",
+          "S",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "HA_X1_bottom",
         "width": 1.9,
@@ -872,7 +1291,15 @@
           "S",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A": "A",
+          "B": "B",
+          "CO": "CO",
+          "S": "S",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "HAxp5_ASAP7_75t_R_upper",
@@ -885,19 +1312,27 @@
           "SN",
           "VDD",
           "VSS"
-        ]
-      },
-      "pin_map": {
-        "A": "A",
-        "B": "B",
-        "S": "SN",
-        "CO": "CON",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A": "A",
+          "B": "B",
+          "S": "SN",
+          "CO": "CON",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "INV_X1": {
-      "base": "INV_X1",
+      "base": {
+        "macro": "INV_X1",
+        "pins": [
+          "A",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "INV_X1_bottom",
         "width": 0.38,
@@ -907,7 +1342,13 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A": "A",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "INVxp33_ASAP7_75t_R_upper",
@@ -918,17 +1359,25 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A": "A",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A": "A",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "INV_X2": {
-      "base": "INV_X2",
+      "base": {
+        "macro": "INV_X2",
+        "pins": [
+          "A",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "INV_X2_bottom",
         "width": 0.57,
@@ -938,7 +1387,13 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A": "A",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "INVxp67_ASAP7_75t_R_upper",
@@ -949,17 +1404,25 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A": "A",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A": "A",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "INV_X4": {
-      "base": "INV_X4",
+      "base": {
+        "macro": "INV_X4",
+        "pins": [
+          "A",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "INV_X4_bottom",
         "width": 0.95,
@@ -969,7 +1432,13 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A": "A",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "INVx1_ASAP7_75t_R_upper",
@@ -980,17 +1449,25 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A": "A",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A": "A",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "INV_X8": {
-      "base": "INV_X8",
+      "base": {
+        "macro": "INV_X8",
+        "pins": [
+          "A",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "INV_X8_bottom",
         "width": 1.71,
@@ -1000,7 +1477,13 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A": "A",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "INVx2_ASAP7_75t_R_upper",
@@ -1011,17 +1494,24 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A": "A",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A": "A",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "LOGIC0_X1": {
-      "base": "LOGIC0_X1",
+      "base": {
+        "macro": "LOGIC0_X1",
+        "pins": [
+          "Z",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "LOGIC0_X1_bottom",
         "width": 0.38,
@@ -1030,7 +1520,12 @@
           "Z",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "Z": "Z",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "TIELOx1_ASAP7_75t_R_upper",
@@ -1040,16 +1535,23 @@
           "L",
           "VDD",
           "VSS"
-        ]
-      },
-      "pin_map": {
-        "Z": "L",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "Z": "L",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "LOGIC1_X1": {
-      "base": "LOGIC1_X1",
+      "base": {
+        "macro": "LOGIC1_X1",
+        "pins": [
+          "Z",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "LOGIC1_X1_bottom",
         "width": 0.38,
@@ -1058,7 +1560,12 @@
           "Z",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "Z": "Z",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "TIEHIx1_ASAP7_75t_R_upper",
@@ -1068,16 +1575,25 @@
           "H",
           "VDD",
           "VSS"
-        ]
-      },
-      "pin_map": {
-        "Z": "H",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "Z": "H",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "NAND2_X1": {
-      "base": "NAND2_X1",
+      "base": {
+        "macro": "NAND2_X1",
+        "pins": [
+          "A1",
+          "A2",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "NAND2_X1_bottom",
         "width": 0.57,
@@ -1088,7 +1604,14 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "NAND2xp33_ASAP7_75t_R_upper",
@@ -1100,18 +1623,27 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A1": "A",
-        "A2": "B",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A1": "A",
+          "A2": "B",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "NAND2_X2": {
-      "base": "NAND2_X2",
+      "base": {
+        "macro": "NAND2_X2",
+        "pins": [
+          "A1",
+          "A2",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "NAND2_X2_bottom",
         "width": 0.95,
@@ -1122,7 +1654,14 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "NAND2x1_ASAP7_75t_R_upper",
@@ -1134,18 +1673,27 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A1": "A",
-        "A2": "B",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A1": "A",
+          "A2": "B",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "NAND2_X4": {
-      "base": "NAND2_X4",
+      "base": {
+        "macro": "NAND2_X4",
+        "pins": [
+          "A1",
+          "A2",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "NAND2_X4_bottom",
         "width": 1.71,
@@ -1156,7 +1704,14 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "NAND2x2_ASAP7_75t_R_upper",
@@ -1168,18 +1723,28 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A1": "A",
-        "A2": "B",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A1": "A",
+          "A2": "B",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "NAND3_X1": {
-      "base": "NAND3_X1",
+      "base": {
+        "macro": "NAND3_X1",
+        "pins": [
+          "A1",
+          "A2",
+          "A3",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "NAND3_X1_bottom",
         "width": 0.76,
@@ -1191,7 +1756,15 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "A3": "A3",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "NAND3xp33_ASAP7_75t_R_upper",
@@ -1204,19 +1777,29 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A1": "A",
-        "A2": "B",
-        "A3": "C",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A1": "A",
+          "A2": "B",
+          "A3": "C",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "NAND3_X2": {
-      "base": "NAND3_X2",
+      "base": {
+        "macro": "NAND3_X2",
+        "pins": [
+          "A1",
+          "A2",
+          "A3",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "NAND3_X2_bottom",
         "width": 1.33,
@@ -1228,7 +1811,15 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "A3": "A3",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "NAND3x1_ASAP7_75t_R_upper",
@@ -1241,19 +1832,29 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A1": "A",
-        "A2": "B",
-        "A3": "C",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A1": "A",
+          "A2": "B",
+          "A3": "C",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "NAND3_X4": {
-      "base": "NAND3_X4",
+      "base": {
+        "macro": "NAND3_X4",
+        "pins": [
+          "A1",
+          "A2",
+          "A3",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "NAND3_X4_bottom",
         "width": 2.47,
@@ -1265,7 +1866,15 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "A3": "A3",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "NAND3x2_ASAP7_75t_R_upper",
@@ -1278,19 +1887,30 @@
           "VSS",
           "Y",
           "A"
-        ]
-      },
-      "pin_map": {
-        "A1": "A",
-        "A2": "B",
-        "A3": "C",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A1": "A",
+          "A2": "B",
+          "A3": "C",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "NAND4_X1": {
-      "base": "NAND4_X1",
+      "base": {
+        "macro": "NAND4_X1",
+        "pins": [
+          "A1",
+          "A2",
+          "A3",
+          "A4",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "NAND4_X1_bottom",
         "width": 0.95,
@@ -1303,7 +1923,16 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "A3": "A3",
+          "A4": "A4",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "NAND4xp25_ASAP7_75t_R_upper",
@@ -1317,20 +1946,31 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A1": "A",
-        "A2": "B",
-        "A3": "C",
-        "A4": "D",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A1": "A",
+          "A2": "B",
+          "A3": "C",
+          "A4": "D",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "NAND4_X2": {
-      "base": "NAND4_X2",
+      "base": {
+        "macro": "NAND4_X2",
+        "pins": [
+          "A1",
+          "A2",
+          "A3",
+          "A4",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "NAND4_X2_bottom",
         "width": 1.71,
@@ -1343,7 +1983,16 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "A3": "A3",
+          "A4": "A4",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "NAND4xp75_ASAP7_75t_R_upper",
@@ -1357,20 +2006,29 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A1": "A",
-        "A2": "B",
-        "A3": "C",
-        "A4": "D",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A1": "A",
+          "A2": "B",
+          "A3": "C",
+          "A4": "D",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "NOR2_X1": {
-      "base": "NOR2_X1",
+      "base": {
+        "macro": "NOR2_X1",
+        "pins": [
+          "A1",
+          "A2",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "NOR2_X1_bottom",
         "width": 0.57,
@@ -1381,7 +2039,14 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "NOR2xp33_ASAP7_75t_R_upper",
@@ -1393,18 +2058,27 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A1": "A",
-        "A2": "B",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A1": "A",
+          "A2": "B",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "NOR2_X2": {
-      "base": "NOR2_X2",
+      "base": {
+        "macro": "NOR2_X2",
+        "pins": [
+          "A1",
+          "A2",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "NOR2_X2_bottom",
         "width": 0.95,
@@ -1415,7 +2089,14 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "NOR2x1_ASAP7_75t_R_upper",
@@ -1427,18 +2108,27 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A1": "A",
-        "A2": "B",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A1": "A",
+          "A2": "B",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "NOR2_X4": {
-      "base": "NOR2_X4",
+      "base": {
+        "macro": "NOR2_X4",
+        "pins": [
+          "A1",
+          "A2",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "NOR2_X4_bottom",
         "width": 1.71,
@@ -1449,7 +2139,14 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "NOR2x1p5_ASAP7_75t_R_upper",
@@ -1461,18 +2158,28 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A1": "A",
-        "A2": "B",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A1": "A",
+          "A2": "B",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "NOR3_X1": {
-      "base": "NOR3_X1",
+      "base": {
+        "macro": "NOR3_X1",
+        "pins": [
+          "A1",
+          "A2",
+          "A3",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "NOR3_X1_bottom",
         "width": 0.76,
@@ -1484,7 +2191,15 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "A3": "A3",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "NOR3xp33_ASAP7_75t_R_upper",
@@ -1497,19 +2212,29 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A1": "A",
-        "A2": "B",
-        "A3": "C",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A1": "A",
+          "A2": "B",
+          "A3": "C",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "NOR3_X2": {
-      "base": "NOR3_X2",
+      "base": {
+        "macro": "NOR3_X2",
+        "pins": [
+          "A1",
+          "A2",
+          "A3",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "NOR3_X2_bottom",
         "width": 1.33,
@@ -1521,7 +2246,15 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "A3": "A3",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "NOR3x1_ASAP7_75t_R_upper",
@@ -1534,19 +2267,29 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A1": "A",
-        "A2": "B",
-        "A3": "C",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A1": "A",
+          "A2": "B",
+          "A3": "C",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "NOR3_X4": {
-      "base": "NOR3_X4",
+      "base": {
+        "macro": "NOR3_X4",
+        "pins": [
+          "A1",
+          "A2",
+          "A3",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "NOR3_X4_bottom",
         "width": 2.66,
@@ -1558,7 +2301,15 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "A3": "A3",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "NOR3x2_ASAP7_75t_R_upper",
@@ -1571,19 +2322,30 @@
           "VSS",
           "Y",
           "A"
-        ]
-      },
-      "pin_map": {
-        "A1": "A",
-        "A2": "B",
-        "A3": "C",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A1": "A",
+          "A2": "B",
+          "A3": "C",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "NOR4_X1": {
-      "base": "NOR4_X1",
+      "base": {
+        "macro": "NOR4_X1",
+        "pins": [
+          "A1",
+          "A2",
+          "A3",
+          "A4",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "NOR4_X1_bottom",
         "width": 0.95,
@@ -1596,7 +2358,16 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "A3": "A3",
+          "A4": "A4",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "NOR4xp25_ASAP7_75t_R_upper",
@@ -1610,20 +2381,31 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A1": "A",
-        "A2": "B",
-        "A3": "C",
-        "A4": "D",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A1": "A",
+          "A2": "B",
+          "A3": "C",
+          "A4": "D",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "NOR4_X2": {
-      "base": "NOR4_X2",
+      "base": {
+        "macro": "NOR4_X2",
+        "pins": [
+          "A1",
+          "A2",
+          "A3",
+          "A4",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "NOR4_X2_bottom",
         "width": 1.71,
@@ -1636,7 +2418,16 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "A3": "A3",
+          "A4": "A4",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "NOR4xp75_ASAP7_75t_R_upper",
@@ -1650,20 +2441,30 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A1": "A",
-        "A2": "B",
-        "A3": "C",
-        "A4": "D",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A1": "A",
+          "A2": "B",
+          "A3": "C",
+          "A4": "D",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "OAI21_X1": {
-      "base": "OAI21_X1",
+      "base": {
+        "macro": "OAI21_X1",
+        "pins": [
+          "A",
+          "B1",
+          "B2",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "OAI21_X1_bottom",
         "width": 0.76,
@@ -1675,7 +2476,15 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A": "A",
+          "B1": "B1",
+          "B2": "B2",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "OAI21xp33_ASAP7_75t_R_upper",
@@ -1688,19 +2497,29 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "B1": "A1",
-        "B2": "A2",
-        "A": "B",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "B1": "A1",
+          "B2": "A2",
+          "A": "B",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "OAI21_X2": {
-      "base": "OAI21_X2",
+      "base": {
+        "macro": "OAI21_X2",
+        "pins": [
+          "A",
+          "B1",
+          "B2",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "OAI21_X2_bottom",
         "width": 1.33,
@@ -1712,7 +2531,15 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A": "A",
+          "B1": "B1",
+          "B2": "B2",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "OAI21xp5_ASAP7_75t_R_upper",
@@ -1725,19 +2552,30 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "B1": "A1",
-        "B2": "A2",
-        "A": "B",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "B1": "A1",
+          "B2": "A2",
+          "A": "B",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "OAI22_X1": {
-      "base": "OAI22_X1",
+      "base": {
+        "macro": "OAI22_X1",
+        "pins": [
+          "A1",
+          "A2",
+          "B1",
+          "B2",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "OAI22_X1_bottom",
         "width": 0.95,
@@ -1750,7 +2588,16 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "B1": "B1",
+          "B2": "B2",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "OAI22xp33_ASAP7_75t_R_upper",
@@ -1764,20 +2611,31 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A1": "A1",
-        "A2": "A2",
-        "B1": "B1",
-        "B2": "B2",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "B1": "B1",
+          "B2": "B2",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "OAI22_X2": {
-      "base": "OAI22_X2",
+      "base": {
+        "macro": "OAI22_X2",
+        "pins": [
+          "A1",
+          "A2",
+          "B1",
+          "B2",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "OAI22_X2_bottom",
         "width": 1.71,
@@ -1790,7 +2648,16 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "B1": "B1",
+          "B2": "B2",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "OAI22xp5_ASAP7_75t_R_upper",
@@ -1804,20 +2671,29 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A1": "A1",
-        "A2": "A2",
-        "B1": "B1",
-        "B2": "B2",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "B1": "B1",
+          "B2": "B2",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "OR2_X1": {
-      "base": "OR2_X1",
+      "base": {
+        "macro": "OR2_X1",
+        "pins": [
+          "A1",
+          "A2",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "OR2_X1_bottom",
         "width": 0.76,
@@ -1828,7 +2704,14 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "OR2x2_ASAP7_75t_R_upper",
@@ -1840,18 +2723,27 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A1": "A",
-        "A2": "B",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A1": "A",
+          "A2": "B",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "OR2_X2": {
-      "base": "OR2_X2",
+      "base": {
+        "macro": "OR2_X2",
+        "pins": [
+          "A1",
+          "A2",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "OR2_X2_bottom",
         "width": 0.95,
@@ -1862,7 +2754,14 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "OR2x4_ASAP7_75t_R_upper",
@@ -1874,18 +2773,27 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A1": "A",
-        "A2": "B",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A1": "A",
+          "A2": "B",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "OR2_X4": {
-      "base": "OR2_X4",
+      "base": {
+        "macro": "OR2_X4",
+        "pins": [
+          "A1",
+          "A2",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "OR2_X4_bottom",
         "width": 1.71,
@@ -1896,7 +2804,14 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "OR2x6_ASAP7_75t_R_upper",
@@ -1908,18 +2823,28 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A1": "A",
-        "A2": "B",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A1": "A",
+          "A2": "B",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "OR3_X1": {
-      "base": "OR3_X1",
+      "base": {
+        "macro": "OR3_X1",
+        "pins": [
+          "A1",
+          "A2",
+          "A3",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "OR3_X1_bottom",
         "width": 0.95,
@@ -1931,7 +2856,15 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "A3": "A3",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "OR3x1_ASAP7_75t_R_upper",
@@ -1944,19 +2877,29 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A1": "A",
-        "A2": "B",
-        "A3": "C",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A1": "A",
+          "A2": "B",
+          "A3": "C",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "OR3_X2": {
-      "base": "OR3_X2",
+      "base": {
+        "macro": "OR3_X2",
+        "pins": [
+          "A1",
+          "A2",
+          "A3",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "OR3_X2_bottom",
         "width": 1.14,
@@ -1968,7 +2911,15 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "A3": "A3",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "OR3x2_ASAP7_75t_R_upper",
@@ -1981,19 +2932,29 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A1": "A",
-        "A2": "B",
-        "A3": "C",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A1": "A",
+          "A2": "B",
+          "A3": "C",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "OR3_X4": {
-      "base": "OR3_X4",
+      "base": {
+        "macro": "OR3_X4",
+        "pins": [
+          "A1",
+          "A2",
+          "A3",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "OR3_X4_bottom",
         "width": 2.09,
@@ -2005,7 +2966,15 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "A3": "A3",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "OR3x4_ASAP7_75t_R_upper",
@@ -2018,19 +2987,30 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A1": "A",
-        "A2": "B",
-        "A3": "C",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A1": "A",
+          "A2": "B",
+          "A3": "C",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "OR4_X1": {
-      "base": "OR4_X1",
+      "base": {
+        "macro": "OR4_X1",
+        "pins": [
+          "A1",
+          "A2",
+          "A3",
+          "A4",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "OR4_X1_bottom",
         "width": 1.14,
@@ -2043,7 +3023,16 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "A3": "A3",
+          "A4": "A4",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "OR4x1_ASAP7_75t_R_upper",
@@ -2057,20 +3046,31 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A1": "A",
-        "A2": "B",
-        "A3": "C",
-        "A4": "D",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A1": "A",
+          "A2": "B",
+          "A3": "C",
+          "A4": "D",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "OR4_X2": {
-      "base": "OR4_X2",
+      "base": {
+        "macro": "OR4_X2",
+        "pins": [
+          "A1",
+          "A2",
+          "A3",
+          "A4",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "OR4_X2_bottom",
         "width": 1.33,
@@ -2083,7 +3083,16 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A1": "A1",
+          "A2": "A2",
+          "A3": "A3",
+          "A4": "A4",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "OR4x2_ASAP7_75t_R_upper",
@@ -2097,20 +3106,29 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A1": "A",
-        "A2": "B",
-        "A3": "C",
-        "A4": "D",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A1": "A",
+          "A2": "B",
+          "A3": "C",
+          "A4": "D",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "XNOR2_X1": {
-      "base": "XNOR2_X1",
+      "base": {
+        "macro": "XNOR2_X1",
+        "pins": [
+          "A",
+          "B",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "XNOR2_X1_bottom",
         "width": 1.14,
@@ -2121,7 +3139,14 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A": "A",
+          "B": "B",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "XNOR2xp5_ASAP7_75t_R_upper",
@@ -2133,18 +3158,27 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A": "A",
-        "B": "B",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A": "A",
+          "B": "B",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "XNOR2_X2": {
-      "base": "XNOR2_X2",
+      "base": {
+        "macro": "XNOR2_X2",
+        "pins": [
+          "A",
+          "B",
+          "ZN",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "XNOR2_X2_bottom",
         "width": 1.9,
@@ -2155,7 +3189,14 @@
           "ZN",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A": "A",
+          "B": "B",
+          "ZN": "ZN",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "XNOR2x1_ASAP7_75t_R_upper",
@@ -2167,18 +3208,27 @@
           "VSS",
           "Y",
           "A"
-        ]
-      },
-      "pin_map": {
-        "A": "A",
-        "B": "B",
-        "ZN": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A": "A",
+          "B": "B",
+          "ZN": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "XOR2_X1": {
-      "base": "XOR2_X1",
+      "base": {
+        "macro": "XOR2_X1",
+        "pins": [
+          "A",
+          "B",
+          "Z",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "XOR2_X1_bottom",
         "width": 1.14,
@@ -2189,7 +3239,14 @@
           "Z",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A": "A",
+          "B": "B",
+          "Z": "Z",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "XOR2xp5_ASAP7_75t_R_upper",
@@ -2201,18 +3258,27 @@
           "VDD",
           "VSS",
           "Y"
-        ]
-      },
-      "pin_map": {
-        "A": "A",
-        "B": "B",
-        "Z": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A": "A",
+          "B": "B",
+          "Z": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "XOR2_X2": {
-      "base": "XOR2_X2",
+      "base": {
+        "macro": "XOR2_X2",
+        "pins": [
+          "A",
+          "B",
+          "Z",
+          "VDD",
+          "VSS"
+        ]
+      },
       "bottom": {
         "macro": "XOR2_X2_bottom",
         "width": 1.71,
@@ -2223,7 +3289,14 @@
           "Z",
           "VDD",
           "VSS"
-        ]
+        ],
+        "pin_map": {
+          "A": "A",
+          "B": "B",
+          "Z": "Z",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       },
       "upper": {
         "macro": "XOR2x1_ASAP7_75t_R_upper",
@@ -2235,18 +3308,28 @@
           "VSS",
           "Y",
           "B"
-        ]
-      },
-      "pin_map": {
-        "A": "A",
-        "B": "B",
-        "Z": "Y",
-        "VDD": "VDD",
-        "VSS": "VSS"
+        ],
+        "pin_map": {
+          "A": "A",
+          "B": "B",
+          "Z": "Y",
+          "VDD": "VDD",
+          "VSS": "VSS"
+        }
       }
     },
     "fakeram45_64x21": {
-      "base": "fakeram45_64x21",
+      "base": {
+        "macro": "fakeram45_64x21",
+        "pins": [
+          "clk",
+          "rd_out",
+          "we_in",
+          "ce_in",
+          "addr_in",
+          "wd_in"
+        ]
+      },
       "bottom": {
         "macro": "fakeram45_64x21_bottom",
         "width": 15.77,
@@ -2258,7 +3341,15 @@
           "ce_in",
           "addr_in",
           "wd_in"
-        ]
+        ],
+        "pin_map": {
+          "clk": "clk",
+          "rd_out": "rd_out",
+          "we_in": "we_in",
+          "ce_in": "ce_in",
+          "addr_in": "addr_in",
+          "wd_in": "wd_in"
+        }
       },
       "upper": {
         "macro": "fakeram7_64x21_upper",
@@ -2271,19 +3362,29 @@
           "ce_in",
           "addr_in",
           "wd_in"
-        ]
-      },
-      "pin_map": {
-        "clk": "clk",
-        "rd_out": "rd_out",
-        "we_in": "we_in",
-        "ce_in": "ce_in",
-        "addr_in": "addr_in",
-        "wd_in": "wd_in"
+        ],
+        "pin_map": {
+          "clk": "clk",
+          "rd_out": "rd_out",
+          "we_in": "we_in",
+          "ce_in": "ce_in",
+          "addr_in": "addr_in",
+          "wd_in": "wd_in"
+        }
       }
     },
     "fakeram45_256x34": {
-      "base": "fakeram45_256x34",
+      "base": {
+        "macro": "fakeram45_256x34",
+        "pins": [
+          "clk",
+          "rd_out",
+          "we_in",
+          "ce_in",
+          "addr_in",
+          "wd_in"
+        ]
+      },
       "bottom": {
         "macro": "fakeram45_256x34_bottom",
         "width": 98.42,
@@ -2295,7 +3396,15 @@
           "ce_in",
           "addr_in",
           "wd_in"
-        ]
+        ],
+        "pin_map": {
+          "clk": "clk",
+          "rd_out": "rd_out",
+          "we_in": "we_in",
+          "ce_in": "ce_in",
+          "addr_in": "addr_in",
+          "wd_in": "wd_in"
+        }
       },
       "upper": {
         "macro": "fakeram7_256x34_upper",
@@ -2308,19 +3417,29 @@
           "ce_in",
           "addr_in",
           "wd_in"
-        ]
-      },
-      "pin_map": {
-        "clk": "clk",
-        "rd_out": "rd_out",
-        "we_in": "we_in",
-        "ce_in": "ce_in",
-        "addr_in": "addr_in",
-        "wd_in": "wd_in"
+        ],
+        "pin_map": {
+          "clk": "clk",
+          "rd_out": "rd_out",
+          "we_in": "we_in",
+          "ce_in": "ce_in",
+          "addr_in": "addr_in",
+          "wd_in": "wd_in"
+        }
       }
     },
     "fakeram45_2048x39": {
-      "base": "fakeram45_2048x39",
+      "base": {
+        "macro": "fakeram45_2048x39",
+        "pins": [
+          "clk",
+          "rd_out",
+          "we_in",
+          "ce_in",
+          "addr_in",
+          "wd_in"
+        ]
+      },
       "bottom": {
         "macro": "fakeram45_2048x39_bottom",
         "width": 206.91,
@@ -2332,7 +3451,15 @@
           "ce_in",
           "addr_in",
           "wd_in"
-        ]
+        ],
+        "pin_map": {
+          "clk": "clk",
+          "rd_out": "rd_out",
+          "we_in": "we_in",
+          "ce_in": "ce_in",
+          "addr_in": "addr_in",
+          "wd_in": "wd_in"
+        }
       },
       "upper": {
         "macro": "fakeram7_2048x39_upper",
@@ -2345,19 +3472,29 @@
           "ce_in",
           "addr_in",
           "wd_in"
-        ]
-      },
-      "pin_map": {
-        "clk": "clk",
-        "rd_out": "rd_out",
-        "we_in": "we_in",
-        "ce_in": "ce_in",
-        "addr_in": "addr_in",
-        "wd_in": "wd_in"
+        ],
+        "pin_map": {
+          "clk": "clk",
+          "rd_out": "rd_out",
+          "we_in": "we_in",
+          "ce_in": "ce_in",
+          "addr_in": "addr_in",
+          "wd_in": "wd_in"
+        }
       }
     },
     "fakeram45_256x16": {
-      "base": "fakeram45_256x16",
+      "base": {
+        "macro": "fakeram45_256x16",
+        "pins": [
+          "clk",
+          "rd_out",
+          "we_in",
+          "ce_in",
+          "addr_in",
+          "wd_in"
+        ]
+      },
       "bottom": {
         "macro": "fakeram45_256x16_bottom",
         "width": 77.71,
@@ -2369,7 +3506,15 @@
           "ce_in",
           "addr_in",
           "wd_in"
-        ]
+        ],
+        "pin_map": {
+          "clk": "clk",
+          "rd_out": "rd_out",
+          "we_in": "we_in",
+          "ce_in": "ce_in",
+          "addr_in": "addr_in",
+          "wd_in": "wd_in"
+        }
       },
       "upper": {
         "macro": "sram_asap7_16x256_1rw_upper",
@@ -2382,15 +3527,15 @@
           "ce_in",
           "addr_in",
           "wd_in"
-        ]
-      },
-      "pin_map": {
-        "clk": "clk",
-        "rd_out": "rd_out",
-        "we_in": "we_in",
-        "ce_in": "ce_in",
-        "addr_in": "addr_in",
-        "wd_in": "wd_in"
+        ],
+        "pin_map": {
+          "clk": "clk",
+          "rd_out": "rd_out",
+          "we_in": "we_in",
+          "ce_in": "ce_in",
+          "addr_in": "addr_in",
+          "wd_in": "wd_in"
+        }
       }
     }
   }
