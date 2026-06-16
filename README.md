@@ -134,7 +134,7 @@ The key strategies are:
 - **Tier-specific library views**: every physical cell has tier-local masters such as `*_bottom` and `*_upper`, and both OpenROAD and Cadence use COVER views to hide the inactive tier from local optimization while preserving logical connectivity.
 - **Mixed-fanout split before detailed optimization**: the flow explicitly identifies nets whose real sinks span both tiers, inserts a tier-local split buffer to isolate one sink cluster, and converts one mixed-fanout net into two tier-pure fanout nets whenever possible. The buffer tier is selected with a lightweight cost model that penalizes high-util tiers and choices with higher estimated split-side HBT burden.
 - **Tier-by-tier optimization instead of flat 3D optimization**: placement and legalization alternate between the upper and bottom tiers, with explicit tier policy, row/site rebuilding, and stage-specific active-tier control.
-- **Split PDN and staged CTS**: PDN is built separately for bottom and upper tiers, and CTS is structured as owner-tree plus receive-side optimization instead of a single flat 3D clock stage.
+- **Split PDN and staged CTS**: PDN is built separately for bottom and upper tiers. CTS is structured as owner-tier tree construction followed by receive-tier clock repair/optimization, rather than a single flat 3D clock stage.
 - **3D-specific observability**: the flow reports both structural `cross-tier` nets and functional `mixed_fanout` nets, because these are different quantities and they must be tracked separately during 3D optimization.
 
 ## [Enablements](#enablements)
@@ -171,7 +171,7 @@ Our current 3D IC implementation flow is organized around a few explicit 3D stag
 
 - *Front-end 3D construction*: after 2D synthesis and partitioning, the flow builds tier-aware 3D floorplan, IO, split-net, macro-placement and PDN views.
 - *Iterative tier-by-tier physical optimization*: upper and bottom tiers are optimized separately with inactive-tier COVER views and explicit tier policy.
-- *Staged clocking and routing*: CTS is split into owner-tree and receive-side optimization, then routing uses the full merged 3D metal stack.
+- *Staged clocking and routing*: CTS is split into owner-tier tree construction and receive-tier clock repair/optimization, then routing uses the full merged 3D metal stack.
 - *Stage-managed reproducibility*: every major stage writes canonical handoff files and metrics so the flow can be resumed, compared, and analyzed stage by stage.
 
 
@@ -181,7 +181,7 @@ The following figure presents an overview of our homogeneous and heterogeneous P
 - **3D floorplan and IO construction**: the partitioned design is converted into a tier-aware 3D view with tier-local libraries, tier-local PDN intent and HBT-capable routing resources.
 - **Mixed-fanout split stage**: before the main physical optimization loop, the flow isolates one tier's sink cluster so later optimization works on cleaner tier-local fanout structure. The current split policy evaluates upper and bottom buffer placement using three lightweight terms: global tier utilization, an `estimated_extra_hbt` proxy, and the inserted buffer area normalized by the current core area. The HBT proxy is not the final routed HBT count.
 - **Iterative 3D placement and legalization**: the flow alternates active optimization between upper and bottom tiers instead of optimizing both tiers blindly in one flat pass.
-- **Staged 3D CTS**: the clock tree is first built from an owner tier view and then refined from the receive side.
+- **Staged 3D CTS**: `CTS_LAYER` selects the owner tier. The clock tree is first built from that owner-tier view and then refined from the receive side. The current `single_trunk_handoff` name describes this staged owner/receive flow; it does not enforce exactly one physical handoff point per clock domain.
 - **3D route and final extraction**: routing uses the merged 3D stack, then timing, power, DRC and cross-tier reports are collected from final outputs.
 
 <p align="center">

@@ -150,8 +150,8 @@ The OpenROAD Makefile uses the same LEF-view concept as the Cadence flow.
 | `LEF_FILES_SPLIT` | Full 3D LEF visibility for front-end 3D construction and split-net |
 | `LEF_FILES_BOTTOM_COVER` | Bottom tier is protected; upper tier is the active optimization side |
 | `LEF_FILES_UPPER_COVER` | Upper tier is protected; bottom tier is the active optimization side |
-| `LEF_FILES_CTS_OWNER` | Owner-tree CTS view |
-| `LEF_FILES_CTS_RECEIVE` | Receive-opt CTS view |
+| `LEF_FILES_CTS_OWNER` | Owner-tier tree construction view |
+| `LEF_FILES_CTS_RECEIVE` | Receive-tier clock repair/optimization view |
 | `LEF_FILES` | Full LEF visibility for route and final report |
 
 Applied by stage:
@@ -244,8 +244,8 @@ This keeps normal mixed-net optimization available while still measuring whether
 | `ord-place-bottom` | `bottom-only` |
 | `ord-legalize-upper` | `upper-only` |
 | `ord-legalize-bottom` | `bottom-only` |
-| `ord-cts` | owner-tier-only, derived from `CTS_LAYER`, with clock-net exemption |
-| `ord-cts-post` | receive-tier-only, derived as the opposite of `CTS_LAYER`, with clock-net exemption |
+| `ord-cts` | owner-tier tree construction, derived from `CTS_LAYER`, with clock-net exemption |
+| `ord-cts-post` | receive-tier clock repair/optimization, derived as the opposite of `CTS_LAYER`, with clock-net exemption |
 
 `apply_tier_policy` rebuilds rows by default after switching tier context. This is the intended behavior for OpenROAD 3D stages, including macro placement, split PDN, CTS, route, and final reporting, because follow-pin rails and tier-site consistency depend on the rebuilt row pattern.
 
@@ -504,10 +504,12 @@ This keeps DRV and timing repair viable while avoiding the earlier CTS crash in 
 
 The current OpenROAD flow now mirrors the Cadence CTS architecture more closely:
 
-- `ord-cts` is the owner-tree stage
-- `ord-cts-post` is the receive-opt stage
+- `ord-cts` is the owner-tier tree construction stage and runs `clock_tree_synthesis`
+- `ord-cts-post` is the receive-tier clock repair/optimization stage and does not rebuild a new clock tree
 - the non-active tier is fixed with placement status `FIRM`
 - clock nets remain exempt from tier locking
+
+`F2F_CTS_MODE=single_trunk_handoff` should be read as the name of this staged owner/receive CTS policy. In the current OpenROAD scripts it is not a behavioral switch, and `F2F_CTS_HANDOFFS_PER_DOMAIN` is not used to enforce an exact number of physical handoff points per clock domain.
 
 Current defaults:
 

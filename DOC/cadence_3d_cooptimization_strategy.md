@@ -148,6 +148,8 @@ For CTS and post-route:
 - `LEF_FILES_CTS_RECEIVE` and `LEF_FILES_CTS_FINALIZE` use the opposite "none-CTS" view
 - `LEF_FILES_POSTROUTE_RECEIVE` follows the receive-side view
 - `LEF_FILES_POSTROUTE_OWNER` follows the owner-side view
+- `F2F_CTS_MODE=single_trunk_handoff` is recorded as the staged CTS policy name; it does not currently select between multiple CTS algorithms
+- `F2F_CTS_HANDOFFS_PER_DOMAIN` is recorded in CTS manifests, but the scripts do not currently enforce an exact handoff count per clock domain
 
 ### 3.3 Tier strategy
 
@@ -316,7 +318,7 @@ This report model is used by:
 |---|---|---|---|---|---|---|
 | `cds-cts` | `3_place.def`, `3_place.v`, `3_place.sdc` | `4_cts.def`, `4_cts.v`, `4_cts.sdc` | Wrapper over staged subtargets | `CTS_LAYER` chooses owner tier; receive tier is the opposite | invokes owner-tree, receive-opt, finalize | Public staged CTS flow |
 | `cds-cts-owner-tree` | `3_place.def`, `3_place.v`, `3_place.sdc` | `4_0_cts_owner_tree.def`, `4_0_cts_owner_tree.v`, `4_0_cts_owner_tree.sdc` | `LEF_FILES_CTS_OWNER` | Active tier = `CTS_LAYER`, fixed tier = opposite, allow-net = owner-only | `cts_init_design_from_paths`, `apply_tier_policy ...`, `create_ccopt_clock_tree_spec`, `ccopt_design` | Build the owner-tier clock tree |
-| `cds-cts-receive-opt` | `4_0_cts_owner_tree.def`, `4_0_cts_owner_tree.v`, `4_0_cts_owner_tree.sdc` | `4_1_cts_receive_opt.def`, `4_1_cts_receive_opt.v`, `4_1_cts_receive_opt.sdc` | `LEF_FILES_CTS_RECEIVE` | Active tier = receive tier, fixed tier = owner tier, allow-net = receive-only | `apply_tier_policy ...`, `optDesign -postCTS -incr` | Repair receive-side clock-related logic without rebuilding the owner tree |
+| `cds-cts-receive-opt` | `4_0_cts_owner_tree.def`, `4_0_cts_owner_tree.v`, `4_0_cts_owner_tree.sdc` | `4_1_cts_receive_opt.def`, `4_1_cts_receive_opt.v`, `4_1_cts_receive_opt.sdc` | `LEF_FILES_CTS_RECEIVE` | Active tier = receive tier, fixed tier = owner tier, allow-net = receive-only | `apply_tier_policy ...`, `optDesign -postCTS` | Repair receive-side clock-related logic without rebuilding the owner tree |
 | `cds-cts-finalize` | `4_1_cts_receive_opt.def`, `4_1_cts_receive_opt.v`, `4_1_cts_receive_opt.sdc` | `4_3_cts_finalize.def`, `4_3_cts_finalize.v`, `4_3_cts_finalize.sdc`, aliases `4_cts.def`, `4_cts.v`, `4_cts.sdc` | `LEF_FILES_CTS_FINALIZE` | No new active tier optimization; reporting and handoff finalization only | `cts_init_design_from_paths`, `extract_cross_tier_nets`, `cts_write_stage_outputs` | Freeze and publish the final CTS handoff |
 | `cds-cts-legacy` | `3_place.def`, `3_place.v`, `3_place.sdc` | `4_1_cts.def`, `4_1_cts.v`, `4_1_cts.sdc`, aliases `4_cts.def`, `4_cts.v`, `4_cts.sdc` | `LEF_FILES_CTS` | Single-pass owner-side CTS baseline | `apply_tier_policy`, `create_ccopt_clock_tree_spec`, `ccopt_design` | Optional CTS baseline |
 
@@ -453,10 +455,10 @@ The staged CTS flow is:
 This separates:
 
 - owner-tier tree construction
-- receive-tier repair
+- receive-tier clock repair/optimization
 - final publication
 
-Instead of letting one opaque CTS pass introduce and repair everything at once.
+Instead of letting one opaque CTS pass introduce and repair everything at once. The `single_trunk_handoff` name describes this staged owner/receive policy and should not be read as a hard guarantee that the current scripts enforce exactly one physical handoff point per clock domain.
 
 ### 6.7 Staged route option
 
