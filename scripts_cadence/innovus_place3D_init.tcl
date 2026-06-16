@@ -46,8 +46,7 @@ set effective_allow_net [_effective_allow_net_class $requested_allow_net]
 _report_allow_net_resolution "place-init" $requested_allow_net $effective_allow_net
 apply_tier_policy bottom -fixlib 1 -allow_net $effective_allow_net
 pc::setup_basic
-
-place_design
+pc::run_global_place_step place_init
 
 pmu::set_all_tier_macros_fixed
 set_tier_placement_status upper placed

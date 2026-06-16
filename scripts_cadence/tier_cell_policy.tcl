@@ -25,6 +25,13 @@ proc _as_list {envname} {
   return {}
 }
 
+proc _env_or {envname default} {
+  if {[info exists ::env($envname)] && $::env($envname) ne ""} {
+    return $::env($envname)
+  }
+  return $default
+}
+
 # Compatible set_dont_use (recognized by Innovus/Encounter/Genus)
 proc _set_dont_use {cells {flag true}} {
   foreach c $cells {
@@ -553,6 +560,11 @@ proc apply_tier_policy {tier args} {
     if {[info exists ::env(UPPER_SITE)] && $::env(UPPER_SITE) ne ""} {
       set ::env(PLACE_SITE) $::env(UPPER_SITE)
     }
+    set ::env(TIEHI_CELL_AND_PORT) $::env(UPPER_TIEHI_CELL_AND_PORT)
+    set ::env(TIELO_CELL_AND_PORT) $::env(UPPER_TIELO_CELL_AND_PORT)
+    set ::env(PIN3D_ACTIVE_TIER) upper
+    set ::env(PIN3D_ACTIVE_PWR_NET) [_env_or UPPER_POWER_NET TOP_VDD]
+    set ::env(PIN3D_ACTIVE_GND_NET) [_env_or UPPER_GROUND_NET TOP_VSS]
 
     if {$opt(-notouch)} {
       set_dont_touch_by_ref_suffix "*_bottom" -quiet $opt(-quiet)
@@ -570,6 +582,11 @@ proc apply_tier_policy {tier args} {
     if {[info exists ::env(BOTTOM_SITE)] && $::env(BOTTOM_SITE) ne ""} {
       set ::env(PLACE_SITE) $::env(BOTTOM_SITE)
     }
+    set ::env(TIEHI_CELL_AND_PORT) $::env(BOTTOM_TIEHI_CELL_AND_PORT)
+    set ::env(TIELO_CELL_AND_PORT) $::env(BOTTOM_TIELO_CELL_AND_PORT)
+    set ::env(PIN3D_ACTIVE_TIER) bottom
+    set ::env(PIN3D_ACTIVE_PWR_NET) [_env_or BOTTOM_POWER_NET BOT_VDD]
+    set ::env(PIN3D_ACTIVE_GND_NET) [_env_or BOTTOM_GROUND_NET BOT_VSS]
 
     if {$opt(-notouch)} {
       set_dont_touch_by_ref_suffix "*_upper" -quiet $opt(-quiet)

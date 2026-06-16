@@ -67,8 +67,10 @@ generateTracks
 # --- Place pins evenly on four sides (with explicit layer settings) ---
 # error "INTENTIONAL_ABORT: PDN stage completed; failing at user request"
 source $::env(CADENCE_SCRIPTS_DIR)/place_pin.tcl 
+source $::env(CADENCE_SCRIPTS_DIR)/place_common.tcl
 
-place_design
+pc::setup_basic
+pc::run_global_place_step preplace
 
 handoff_write_stage_outputs $stage_paths \
   -def_args {-floorplan} \

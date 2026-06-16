@@ -67,8 +67,8 @@ export RTL_SEARCH_DIRS ?= $(dir $(firstword $(VERILOG_FILES)))
 export MAX_UNGROUP_SIZE ?= 10000
 
 # 分层常量单元（upper / bottom）
-export BOTTOM_TIEHI_CELL_AND_PORT = LOGIC0_X1_bottom Z
-export BOTTOM_TIELO_CELL_AND_PORT = LOGIC1_X1_bottom Z
+export BOTTOM_TIEHI_CELL_AND_PORT = LOGIC1_X1_bottom Z
+export BOTTOM_TIELO_CELL_AND_PORT = LOGIC0_X1_bottom Z
 export UPPER_TIEHI_CELL_AND_PORT  = TIEHIx1_ASAP7_75t_R_upper  H
 export UPPER_TIELO_CELL_AND_PORT  = TIELOx1_ASAP7_75t_R_upper  L
 

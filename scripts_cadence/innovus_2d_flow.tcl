@@ -67,6 +67,7 @@ pc::run_place
 setPlaceMode -place_detail_legalization_inst_gap 1
 setFillerMode -fitGap true
 place_opt_design -out_dir $REPORTS_DIR -prefix legalize
+pc::repair_tie_cells legalize
 
 checkPlace
 
