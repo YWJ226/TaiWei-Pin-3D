@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
+# set -x
 if [[ $# -ne 5 ]]; then
   cat >&2 <<'EOF'
 Usage: test/common/run_stage.sh <enablement> <flow_variant> <use_flow> <design_nickname> <make_target>
