@@ -204,6 +204,17 @@ proc handoff_stage_paths {stage {results_dir ""} {objects_dir ""} {log_dir ""}} 
         v_aliases [list [file join $results_dir "3_place.v"]] \
         image_out [file join $log_dir "3_4_lg_bottom.webp"]]]
     }
+    timing-detailed-placement {
+      return [_handoff_stage_dict $stage "ord-timing-detailed-placement" $results_dir $objects_dir $log_dir [dict create \
+        def_in [file join $results_dir "${::env(DESIGN_NAME)}_3D.lg.def"] \
+        v_in [file join $results_dir "${::env(DESIGN_NAME)}_3D.lg.v"] \
+        sdc_in [file join $results_dir "2_floorplan.sdc"] \
+        def_out [file join $results_dir "${::env(DESIGN_NAME)}_3D.tdp.def"] \
+        v_out [file join $results_dir "${::env(DESIGN_NAME)}_3D.tdp.v"] \
+        sdc_out [file join $results_dir "3_tdplace.sdc"] \
+        def_aliases [list [file join $results_dir "3_tdplace.def"]] \
+        v_aliases [list [file join $results_dir "3_tdplace.v"]]]]
+    }    
     cts {
       return [_handoff_stage_dict $stage "ord-cts" $results_dir $objects_dir $log_dir [dict create \
         def_in [file join $results_dir "3_place.def"] \

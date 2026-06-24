@@ -457,6 +457,11 @@ ord-legalize-bottom:
 	@$(call _mkstdirs)
 	$(call _run_with_tmp_log,$(LOG_DIR)/3_4_lg_bottom.log,LEF_FILES="$(LEF_FILES_UPPER_COVER)" $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/opt_lg_bottom.tcl)
 
+.PHONY: ord-timing-detailed-placement
+ord-timing-detailed-placement:
+	@$(call _mkstdirs)
+	$(call _run_with_tmp_log,$(LOG_DIR)/3_6_tdp.log, $(TIME_CMD) $(OPENROAD_CMD) $(OPENROAD_SCRIPTS_DIR)/timing_detailed_placement.tcl)
+
 # ----- CTS / Route / Finish -----
 .PHONY: ord-cts
 ord-cts:
